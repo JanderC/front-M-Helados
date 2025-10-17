@@ -13,7 +13,7 @@ export const SocketProvider = ({ children }) => {
   useEffect(() => {
     if (isAuthenticated && user) {
       // Conectar al servidor de sockets
-      const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
+      const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'https://back-backend-m-helados-production.up.railway.app';
       
       const newSocket = io(SOCKET_URL, {
         auth: {

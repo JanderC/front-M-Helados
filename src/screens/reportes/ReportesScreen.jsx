@@ -44,10 +44,13 @@ const ReportesScreen = () => {
           response = await reportesService.getProductosVendidos(periodo);
       }
 
-      setDatos(response.data);
+      // Extraer correctamente los datos según la estructura de la API
+      const datosExtraidos = response.data?.data || response.data || [];
+      setDatos(Array.isArray(datosExtraidos) ? datosExtraidos : []);
     } catch (error) {
       console.error('Error al cargar reporte:', error);
       toast.error('Error al cargar reporte');
+      setDatos([]);
     } finally {
       setLoading(false);
     }
@@ -69,14 +72,14 @@ const ReportesScreen = () => {
 
   // Preparar datos para gráficas
   const prepararDatosGrafica = () => {
-    if (!datos) return null;
+    if (!datos || !Array.isArray(datos) || datos.length === 0) return null;
 
     if (tipoReporte === 'productos-vendidos' || tipoReporte === 'toppings-usados') {
       return {
-        labels: datos.map(item => item.nombre),
+        labels: datos.map(item => item.nombre || item.nombre_producto || item.nombre_topping),
         datasets: [{
           label: 'Cantidad Vendida',
-          data: datos.map(item => item.totalVendidos || item.totalUsados),
+          data: datos.map(item => item.totalVendidos || item.total_vendidos || item.totalUsados || item.total_usados || item.cantidad || 0),
           backgroundColor: [
             'rgba(255, 99, 132, 0.5)',
             'rgba(54, 162, 235, 0.5)',
@@ -98,10 +101,10 @@ const ReportesScreen = () => {
 
     if (tipoReporte === 'ventas-categoria') {
       return {
-        labels: datos.map(item => item.categoria),
+        labels: datos.map(item => item.categoria || item.nombre_categoria),
         datasets: [{
           label: 'Ventas (USD)',
-          data: datos.map(item => item.totalVentas),
+          data: datos.map(item => parseFloat(item.totalVentas || item.total_ventas || 0)),
           backgroundColor: 'rgba(54, 162, 235, 0.5)',
           borderColor: 'rgba(54, 162, 235, 1)',
           borderWidth: 1
@@ -223,7 +226,7 @@ const ReportesScreen = () => {
                 <h5 className="mb-0">Datos</h5>
               </Card.Header>
               <Card.Body>
-                {!datos || datos.length === 0 ? (
+                {!datos || !Array.isArray(datos) || datos.length === 0 ? (
                   <div className="text-center py-5 text-muted">
                     <i className="bi bi-inbox" style={{ fontSize: '3rem' }}></i>
                     <p className="mt-3">No hay datos para mostrar</p>
@@ -270,36 +273,36 @@ const ReportesScreen = () => {
                       </thead>
                       <tbody>
                         {datos.map((item, index) => (
-                          <tr key={index}>
+                          <tr key={item.id || index}>
                             {tipoReporte === 'productos-vendidos' && (
                               <>
                                 <td>{index + 1}</td>
-                                <td className="fw-medium">{item.nombre}</td>
-                                <td><Badge bg="primary">{item.categoria}</Badge></td>
-                                <td className="text-end">{item.totalVendidos}</td>
+                                <td className="fw-medium">{item.nombre || item.nombre_producto}</td>
+                                <td><Badge bg="primary">{item.categoria || item.nombre_categoria}</Badge></td>
+                                <td className="text-end">{item.totalVendidos || item.total_vendidos || item.cantidad || 0}</td>
                                 <td className="text-end fw-bold">
-                                  {formatCurrency(item.totalVentas, 'USD')}
+                                  {formatCurrency(item.totalVentas || item.total_ventas || 0, 'USD')}
                                 </td>
                               </>
                             )}
                             {tipoReporte === 'toppings-usados' && (
                               <>
                                 <td>{index + 1}</td>
-                                <td className="fw-medium">{item.nombre}</td>
-                                <td className="text-end">{item.totalUsados}</td>
+                                <td className="fw-medium">{item.nombre || item.nombre_topping}</td>
+                                <td className="text-end">{item.totalUsados || item.total_usados || item.cantidad || 0}</td>
                                 <td className="text-end fw-bold">
-                                  {formatCurrency(item.totalVentas, 'USD')}
+                                  {formatCurrency(item.totalVentas || item.total_ventas || 0, 'USD')}
                                 </td>
                               </>
                             )}
                             {tipoReporte === 'inventario' && (
                               <>
-                                <td className="fw-medium">{item.nombre}</td>
-                                <td><Badge bg="secondary">{item.tipo}</Badge></td>
-                                <td className="text-end">{item.stock}</td>
-                                <td className="text-end">{item.stockMinimo}</td>
+                                <td className="fw-medium">{item.nombre || item.nombre_producto || item.nombre_topping}</td>
+                                <td><Badge bg="secondary">{item.tipo || 'N/A'}</Badge></td>
+                                <td className="text-end">{item.stock || item.stock_actual || 0}</td>
+                                <td className="text-end">{item.stockMinimo || item.stock_minimo || 0}</td>
                                 <td>
-                                  {item.stock <= item.stockMinimo ? (
+                                  {(item.stock || item.stock_actual || 0) <= (item.stockMinimo || item.stock_minimo || 0) ? (
                                     <Badge bg="danger">Stock Bajo</Badge>
                                   ) : (
                                     <Badge bg="success">Normal</Badge>
@@ -309,10 +312,10 @@ const ReportesScreen = () => {
                             )}
                             {tipoReporte === 'ventas-categoria' && (
                               <>
-                                <td className="fw-medium">{item.categoria}</td>
-                                <td className="text-end">{item.cantidad}</td>
+                                <td className="fw-medium">{item.categoria || item.nombre_categoria}</td>
+                                <td className="text-end">{item.cantidad || item.total_ventas_cantidad || 0}</td>
                                 <td className="text-end fw-bold">
-                                  {formatCurrency(item.totalVentas, 'USD')}
+                                  {formatCurrency(item.totalVentas || item.total_ventas || 0, 'USD')}
                                 </td>
                               </>
                             )}

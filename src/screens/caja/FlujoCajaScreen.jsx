@@ -36,10 +36,11 @@ const FlujoCajaScreen = () => {
         monedasService.getTasas()
       ]);
       
-      setEstadoCaja(estadoRes.data);
-      setFlujo(flujoRes.data);
-      setResumenVentas(resumenRes.data);
-      setTasas(tasasRes.data);
+      // Extraer correctamente los datos según la estructura de la API
+      setEstadoCaja(estadoRes.data?.data || estadoRes.data);
+      setFlujo(flujoRes.data?.data || []);
+      setResumenVentas(resumenRes.data?.data || resumenRes.data);
+      setTasas(tasasRes.data?.data || tasasRes.data);
     } catch (error) {
       console.error('Error al cargar datos:', error);
       toast.error('Error al cargar datos de caja');
@@ -63,13 +64,19 @@ const FlujoCajaScreen = () => {
   const calcularTotales = () => {
     const totales = { USD: 0, VES: 0, COP: 0 };
     
-    flujo.forEach(item => {
-      if (item.tipo === 'INGRESO') {
-        totales[item.moneda] += item.monto;
-      } else if (item.tipo === 'EGRESO') {
-        totales[item.moneda] -= item.monto;
-      }
-    });
+    if (Array.isArray(flujo)) {
+      flujo.forEach(item => {
+        const tipo = item.tipo || item.tipo_transaccion;
+        const moneda = item.moneda || item.codigo_moneda;
+        const monto = parseFloat(item.monto) || 0;
+        
+        if (tipo === 'INGRESO') {
+          totales[moneda] = (totales[moneda] || 0) + monto;
+        } else if (tipo === 'EGRESO') {
+          totales[moneda] = (totales[moneda] || 0) - monto;
+        }
+      });
+    }
 
     return totales;
   };
@@ -120,17 +127,17 @@ const FlujoCajaScreen = () => {
                   <>
                     <Col md={3}>
                       <small className="text-muted d-block">Apertura</small>
-                      <strong>{formatDateTime(estadoCaja.fechaApertura)}</strong>
+                      <strong>{formatDateTime(estadoCaja.fechaApertura || estadoCaja.fecha_apertura)}</strong>
                     </Col>
                     <Col md={3}>
                       <small className="text-muted d-block">Monto Inicial</small>
                       <strong className="text-primary">
-                        {formatCurrency(estadoCaja.montoInicial, estadoCaja.moneda)}
+                        {formatCurrency(estadoCaja.montoInicial || estadoCaja.monto_inicial_usd, estadoCaja.moneda || 'USD')}
                       </strong>
                     </Col>
                     <Col md={3}>
                       <small className="text-muted d-block">Responsable</small>
-                      <strong>{estadoCaja.usuario?.nombre || 'N/A'}</strong>
+                      <strong>{estadoCaja.usuario?.nombre || estadoCaja.usuario_apertura || 'N/A'}</strong>
                     </Col>
                   </>
                 )}
@@ -150,7 +157,7 @@ const FlujoCajaScreen = () => {
                   <div>
                     <p className="text-muted mb-1">Total Ventas USD</p>
                     <h3 className="fw-bold mb-0 text-success">
-                      {formatCurrency(resumenVentas.totalUSD || 0, 'USD')}
+                      {formatCurrency(resumenVentas.totalUSD || resumenVentas.total_usd || 0, 'USD')}
                     </h3>
                   </div>
                   <div className="bg-success bg-opacity-10 p-3 rounded">
@@ -167,7 +174,7 @@ const FlujoCajaScreen = () => {
                   <div>
                     <p className="text-muted mb-1">Total Ventas VES</p>
                     <h3 className="fw-bold mb-0 text-info">
-                      {formatCurrency(resumenVentas.totalVES || 0, 'VES')}
+                      {formatCurrency(resumenVentas.totalVES || resumenVentas.total_ves || 0, 'VES')}
                     </h3>
                   </div>
                   <div className="bg-info bg-opacity-10 p-3 rounded">
@@ -184,7 +191,7 @@ const FlujoCajaScreen = () => {
                   <div>
                     <p className="text-muted mb-1">Total Ventas COP</p>
                     <h3 className="fw-bold mb-0 text-warning">
-                      {formatCurrency(resumenVentas.totalCOP || 0, 'COP')}
+                      {formatCurrency(resumenVentas.totalCOP || resumenVentas.total_cop || 0, 'COP')}
                     </h3>
                   </div>
                   <div className="bg-warning bg-opacity-10 p-3 rounded">
@@ -249,33 +256,39 @@ const FlujoCajaScreen = () => {
                 </tr>
               </thead>
               <tbody>
-                {flujo.length === 0 ? (
+                {!Array.isArray(flujo) || flujo.length === 0 ? (
                   <tr>
                     <td colSpan="5" className="text-center py-4 text-muted">
                       No hay movimientos en el período seleccionado
                     </td>
                   </tr>
                 ) : (
-                  flujo.map((item, index) => (
-                    <tr key={index}>
-                      <td>{formatDateTime(item.fecha)}</td>
-                      <td>
-                        <Badge bg={item.tipo === 'INGRESO' ? 'success' : 'danger'}>
-                          {item.tipo}
-                        </Badge>
-                      </td>
-                      <td>{item.concepto}</td>
-                      <td>
-                        <Badge bg="secondary">{item.moneda}</Badge>
-                      </td>
-                      <td className={`text-end fw-bold ${item.tipo === 'INGRESO' ? 'text-success' : 'text-danger'}`}>
-                        {item.tipo === 'INGRESO' ? '+' : '-'}{formatCurrency(item.monto, item.moneda)}
-                      </td>
-                    </tr>
-                  ))
+                  flujo.map((item, index) => {
+                    const tipo = item.tipo || item.tipo_transaccion;
+                    const moneda = item.moneda || item.codigo_moneda;
+                    const fecha = item.fecha || item.fecha_transaccion;
+                    
+                    return (
+                      <tr key={item.id_transaccion || index}>
+                        <td>{formatDateTime(fecha)}</td>
+                        <td>
+                          <Badge bg={tipo === 'INGRESO' ? 'success' : 'danger'}>
+                            {tipo}
+                          </Badge>
+                        </td>
+                        <td>{item.concepto}</td>
+                        <td>
+                          <Badge bg="secondary">{moneda}</Badge>
+                        </td>
+                        <td className={`text-end fw-bold ${tipo === 'INGRESO' ? 'text-success' : 'text-danger'}`}>
+                          {tipo === 'INGRESO' ? '+' : '-'}{formatCurrency(item.monto, moneda)}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
-              {flujo.length > 0 && (
+              {Array.isArray(flujo) && flujo.length > 0 && (
                 <tfoot className="table-light">
                   <tr>
                     <td colSpan="4" className="text-end"><strong>Totales:</strong></td>

@@ -28,7 +28,7 @@ const Navbar = () => {
         <Container fluid>
           <BSNavbar.Brand className="d-flex align-items-center">
             <img 
-              src="https://s3.ezgif.com/tmp/ezgif-3ce4002f22b186.png"
+              src="https://www.pangeatech.com.uy:85/imagenes/helados.png"
               alt="M Helados"
               style={{
                 height: '45px',
