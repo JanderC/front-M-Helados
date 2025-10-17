@@ -1,0 +1,285 @@
+/* Estilos globales */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #f8f9fa;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+/* Login Screen */
+.login-screen {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+/* Layout */
+.layout {
+  min-height: 100vh;
+}
+
+.sidebar {
+  position: sticky;
+  top: 56px;
+  height: calc(100vh - 56px);
+  overflow-y: auto;
+}
+
+/* Scrollbar personalizado */
+.sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 3px;
+}
+
+.sidebar::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Cards */
+.card {
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Botones */
+.btn {
+  transition: all 0.2s;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+}
+
+/* Badges */
+.badge {
+  font-weight: 500;
+}
+
+/* Tablas */
+.table > :not(caption) > * > * {
+  padding: 0.75rem;
+}
+
+.table-hover tbody tr {
+  transition: background-color 0.2s;
+}
+
+/* Modales */
+.modal-content {
+  border: none;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+}
+
+.modal-header {
+  border-bottom: 1px solid #e9ecef;
+}
+
+.modal-footer {
+  border-top: 1px solid #e9ecef;
+}
+
+/* Animaciones */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.card {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .sidebar {
+    position: relative;
+    height: auto;
+    width: 100% !important;
+  }
+}
+
+/* Toast personalizado */
+.Toastify__toast {
+  border-radius: 8px;
+  font-family: inherit;
+}
+
+.Toastify__toast--success {
+  background-color: #28a745;
+}
+
+.Toastify__toast--error {
+  background-color: #dc3545;
+}
+
+.Toastify__toast--info {
+  background-color: #17a2b8;
+}
+
+.Toastify__toast--warning {
+  background-color: #ffc107;
+  color: #000;
+}
+
+/* Spinner personalizado */
+.spinner-border {
+  width: 3rem;
+  height: 3rem;
+}
+
+/* Estados de pedidos - colores personalizados */
+.border-warning {
+  border-color: #ffc107 !important;
+}
+
+.border-info {
+  border-color: #17a2b8 !important;
+}
+
+.border-success {
+  border-color: #28a745 !important;
+}
+
+.border-danger {
+  border-color: #dc3545 !important;
+}
+
+/* Efecto de hover en las tarjetas de pedidos */
+.card:hover {
+  cursor: pointer;
+}
+
+/* Imagen de producto placeholder */
+.bg-light {
+  background-color: #f8f9fa !important;
+}
+
+/* Estilos para la barra de búsqueda */
+.input-group-text {
+  background-color: #fff;
+  border-right: none;
+}
+
+.input-group .form-control {
+  border-left: none;
+}
+
+.input-group .form-control:focus {
+  border-color: #ced4da;
+  box-shadow: none;
+}
+
+/* Estilos para las gráficas */
+canvas {
+  max-height: 400px;
+}
+
+/* Mejoras visuales para badges */
+.badge {
+  padding: 0.5em 0.75em;
+  font-size: 0.875em;
+}
+
+/* Sticky header para tablas */
+.table-responsive {
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.table thead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background-color: #f8f9fa;
+}
+
+/* Estilos para formularios */
+.form-label {
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+  color: #495057;
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: #80bdff;
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+/* Estilos para alertas */
+.alert {
+  border: none;
+  border-left: 4px solid;
+}
+
+.alert-info {
+  border-left-color: #17a2b8;
+  background-color: #d1ecf1;
+}
+
+.alert-warning {
+  border-left-color: #ffc107;
+  background-color: #fff3cd;
+}
+
+.alert-danger {
+  border-left-color: #dc3545;
+  background-color: #f8d7da;
+}
+
+.alert-success {
+  border-left-color: #28a745;
+  background-color: #d4edda;
+}
+
+/* Loader global */
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+
+/* Efectos de hover en botones */
+.btn-outline-primary:hover,
+.btn-outline-secondary:hover,
+.btn-outline-success:hover,
+.btn-outline-danger:hover,
+.btn-outline-info:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}

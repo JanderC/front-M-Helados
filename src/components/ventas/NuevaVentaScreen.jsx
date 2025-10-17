@@ -1,0 +1,398 @@
+import { useState, useEffect } from 'react';
+import { Row, Col, Card, Button, Form, Badge, ListGroup, Alert } from 'react-bootstrap';
+import { productosService } from '../../api/services/productosService';
+import { toppingsService } from '../../api/services/toppingsService';
+import { ventasService } from '../../api/services/ventasService';
+import { monedasService } from '../../api/services/monedasService';
+import { toast } from 'react-toastify';
+import { formatCurrency, calcularTotalVenta } from '../../utils/formatters';
+import { MONEDAS } from '../../utils/constants';
+
+const NuevaVentaScreen = () => {
+  const [productos, setProductos] = useState([]);
+  const [toppings, setToppings] = useState([]);
+  const [tasas, setTasas] = useState({ USD: 1, VES: 36, COP: 4000 });
+  const [carrito, setCarrito] = useState([]);
+  const [monedaSeleccionada, setMonedaSeleccionada] = useState('USD');
+  const [loading, setLoading] = useState(true);
+  const [procesando, setProcesando] = useState(false);
+  const [filtroCategoria, setFiltroCategoria] = useState('');
+  const [categorias, setCategorias] = useState([]);
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      const [prodResponse, toppResponse, tasasResponse, catResponse] = await Promise.all([
+        productosService.getAll(),
+        toppingsService.getAll(),
+        monedasService.getTasas(),
+        productosService.getCategorias()
+      ]);
+      
+      setProductos(prodResponse.data);
+      setToppings(toppResponse.data);
+      setTasas(tasasResponse.data);
+      setCategorias(catResponse.data);
+    } catch (error) {
+      console.error('Error al cargar datos:', error);
+      toast.error('Error al cargar datos');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const agregarAlCarrito = (producto) => {
+    if (producto.stock <= 0) {
+      toast.error('Producto sin stock disponible');
+      return;
+    }
+
+    const itemExistente = carrito.find(item => 
+      item.productoId === producto.id && item.toppings.length === 0
+    );
+
+    if (itemExistente) {
+      setCarrito(carrito.map(item =>
+        item.id === itemExistente.id
+          ? { ...item, cantidad: item.cantidad + 1 }
+          : item
+      ));
+    } else {
+      setCarrito([...carrito, {
+        id: Date.now(),
+        productoId: producto.id,
+        nombre: producto.nombre,
+        precio: producto.precio,
+        cantidad: 1,
+        toppings: [],
+        imagenUrl: producto.imagenUrl
+      }]);
+    }
+  };
+
+  const agregarTopping = (itemId, topping) => {
+    setCarrito(carrito.map(item => {
+      if (item.id === itemId) {
+        const toppingYaAgregado = item.toppings.find(t => t.id === topping.id);
+        if (toppingYaAgregado) {
+          toast.warning('Este topping ya fue agregado');
+          return item;
+        }
+        return {
+          ...item,
+          toppings: [...item.toppings, {
+            id: topping.id,
+            nombre: topping.nombre,
+            precio: topping.precio
+          }]
+        };
+      }
+      return item;
+    }));
+  };
+
+  const removerTopping = (itemId, toppingId) => {
+    setCarrito(carrito.map(item => {
+      if (item.id === itemId) {
+        return {
+          ...item,
+          toppings: item.toppings.filter(t => t.id !== toppingId)
+        };
+      }
+      return item;
+    }));
+  };
+
+  const actualizarCantidad = (itemId, cantidad) => {
+    if (cantidad <= 0) {
+      setCarrito(carrito.filter(item => item.id !== itemId));
+    } else {
+      setCarrito(carrito.map(item =>
+        item.id === itemId ? { ...item, cantidad } : item
+      ));
+    }
+  };
+
+  const removerDelCarrito = (itemId) => {
+    setCarrito(carrito.filter(item => item.id !== itemId));
+  };
+
+  const calcularSubtotal = (item) => {
+    const precioBase = item.precio * item.cantidad;
+    const precioToppings = item.toppings.reduce((sum, t) => sum + t.precio, 0) * item.cantidad;
+    return precioBase + precioToppings;
+  };
+
+  const calcularTotal = () => {
+    return carrito.reduce((total, item) => total + calcularSubtotal(item), 0);
+  };
+
+  const procesarVenta = async () => {
+    if (carrito.length === 0) {
+      toast.error('El carrito está vacío');
+      return;
+    }
+
+    try {
+      setProcesando(true);
+
+      const ventaData = {
+        items: carrito.map(item => ({
+          productoId: item.productoId,
+          cantidad: item.cantidad,
+          precio: item.precio,
+          toppings: item.toppings.map(t => ({
+            toppingId: t.id,
+            precio: t.precio
+          }))
+        })),
+        moneda: monedaSeleccionada,
+        total: calcularTotal()
+      };
+
+      await ventasService.create(ventaData);
+      toast.success('¡Venta procesada exitosamente!');
+      setCarrito([]);
+      loadData(); // Recargar para actualizar stocks
+    } catch (error) {
+      console.error('Error al procesar venta:', error);
+      toast.error(error.response?.data?.message || 'Error al procesar venta');
+    } finally {
+      setProcesando(false);
+    }
+  };
+
+  const productosFiltrados = filtroCategoria
+    ? productos.filter(p => p.categoria === filtroCategoria)
+    : productos;
+
+  const totalUSD = calcularTotal();
+  const totalMoneda = totalUSD * (tasas[monedaSeleccionada] || 1);
+
+  return (
+    <div>
+      <div className="d-flex justify-content-between align-items-center mb-4">
+        <h2 className="fw-bold">
+          <i className="bi bi-cart-plus me-2 text-primary"></i>
+          Nueva Venta
+        </h2>
+        <div className="d-flex gap-2">
+          <Form.Select
+            value={monedaSeleccionada}
+            onChange={(e) => setMonedaSeleccionada(e.target.value)}
+            style={{ width: '150px' }}
+          >
+            <option value="USD">USD ($)</option>
+            <option value="VES">VES (Bs.)</option>
+            <option value="COP">COP (COP$)</option>
+          </Form.Select>
+        </div>
+      </div>
+
+      <Row>
+        {/* Productos */}
+        <Col lg={8}>
+          <Card className="border-0 shadow-sm mb-4">
+            <Card.Body>
+              <div className="mb-3">
+                <Form.Select
+                  value={filtroCategoria}
+                  onChange={(e) => setFiltroCategoria(e.target.value)}
+                >
+                  <option value="">Todas las categorías</option>
+                  {categorias.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </Form.Select>
+              </div>
+
+              {loading ? (
+                <div className="text-center py-4">Cargando productos...</div>
+              ) : (
+                <Row>
+                  {productosFiltrados.map(producto => (
+                    <Col key={producto.id} md={6} lg={4} className="mb-3">
+                      <Card 
+                        className="h-100 border-0 shadow-sm"
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => agregarAlCarrito(producto)}
+                      >
+                        {producto.imagenUrl ? (
+                          <Card.Img
+                            variant="top"
+                            src={producto.imagenUrl}
+                            style={{ height: '150px', objectFit: 'cover' }}
+                          />
+                        ) : (
+                          <div
+                            className="bg-light d-flex align-items-center justify-content-center"
+                            style={{ height: '150px' }}
+                          >
+                            <i className="bi bi-image text-muted" style={{ fontSize: '2rem' }}></i>
+                          </div>
+                        )}
+                        <Card.Body>
+                          <Badge bg="primary" className="mb-2">{producto.categoria}</Badge>
+                          <Card.Title className="mb-1 small">{producto.nombre}</Card.Title>
+                          <div className="d-flex justify-content-between align-items-center">
+                            <strong className="text-primary">
+                              {formatCurrency(producto.precio, 'USD')}
+                            </strong>
+                            <Badge bg={producto.stock > 0 ? 'success' : 'danger'}>
+                              Stock: {producto.stock}
+                            </Badge>
+                          </div>
+                        </Card.Body>
+                      </Card>
+                    </Col>
+                  ))}
+                </Row>
+              )}
+            </Card.Body>
+          </Card>
+        </Col>
+
+        {/* Carrito */}
+        <Col lg={4}>
+          <Card className="border-0 shadow-sm sticky-top" style={{ top: '80px' }}>
+            <Card.Header className="bg-primary text-white">
+              <h5 className="mb-0">
+                <i className="bi bi-cart3 me-2"></i>
+                Carrito ({carrito.length})
+              </h5>
+            </Card.Header>
+            <Card.Body style={{ maxHeight: '500px', overflowY: 'auto' }}>
+              {carrito.length === 0 ? (
+                <div className="text-center py-5 text-muted">
+                  <i className="bi bi-cart-x" style={{ fontSize: '3rem' }}></i>
+                  <p className="mt-2">El carrito está vacío</p>
+                </div>
+              ) : (
+                <ListGroup variant="flush">
+                  {carrito.map(item => (
+                    <ListGroup.Item key={item.id} className="px-0">
+                      <div className="d-flex justify-content-between align-items-start mb-2">
+                        <div className="flex-grow-1">
+                          <strong>{item.nombre}</strong>
+                          <div className="small text-muted">
+                            {formatCurrency(item.precio, 'USD')} x {item.cantidad}
+                          </div>
+                        </div>
+                        <Button
+                          variant="link"
+                          size="sm"
+                          className="text-danger p-0"
+                          onClick={() => removerDelCarrito(item.id)}
+                        >
+                          <i className="bi bi-trash"></i>
+                        </Button>
+                      </div>
+
+                      {/* Toppings agregados */}
+                      {item.toppings.length > 0 && (
+                        <div className="mb-2">
+                          {item.toppings.map(topping => (
+                            <Badge
+                              key={topping.id}
+                              bg="secondary"
+                              className="me-1 mb-1"
+                            >
+                              {topping.nombre} (+{formatCurrency(topping.precio, 'USD')})
+                              <i
+                                className="bi bi-x ms-1"
+                                style={{ cursor: 'pointer' }}
+                                onClick={() => removerTopping(item.id, topping.id)}
+                              ></i>
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Selector de toppings */}
+                      <Form.Select
+                        size="sm"
+                        onChange={(e) => {
+                          const topping = toppings.find(t => t.id === parseInt(e.target.value));
+                          if (topping) {
+                            agregarTopping(item.id, topping);
+                            e.target.value = '';
+                          }
+                        }}
+                      >
+                        <option value="">+ Agregar topping</option>
+                        {toppings.map(topping => (
+                          <option key={topping.id} value={topping.id}>
+                            {topping.nombre} (+{formatCurrency(topping.precio, 'USD')})
+                          </option>
+                        ))}
+                      </Form.Select>
+
+                      {/* Cantidad */}
+                      <div className="d-flex align-items-center gap-2 mt-2">
+                        <Button
+                          variant="outline-secondary"
+                          size="sm"
+                          onClick={() => actualizarCantidad(item.id, item.cantidad - 1)}
+                        >
+                          <i className="bi bi-dash"></i>
+                        </Button>
+                        <span className="fw-bold">{item.cantidad}</span>
+                        <Button
+                          variant="outline-secondary"
+                          size="sm"
+                          onClick={() => actualizarCantidad(item.id, item.cantidad + 1)}
+                        >
+                          <i className="bi bi-plus"></i>
+                        </Button>
+                        <div className="ms-auto fw-bold">
+                          {formatCurrency(calcularSubtotal(item), 'USD')}
+                        </div>
+                      </div>
+                    </ListGroup.Item>
+                  ))}
+                </ListGroup>
+              )}
+            </Card.Body>
+            
+            {carrito.length > 0 && (
+              <Card.Footer className="bg-light">
+                <div className="d-flex justify-content-between align-items-center mb-2">
+                  <strong>Total USD:</strong>
+                  <h5 className="mb-0 text-primary">{formatCurrency(totalUSD, 'USD')}</h5>
+                </div>
+                {monedaSeleccionada !== 'USD' && (
+                  <div className="d-flex justify-content-between align-items-center mb-3">
+                    <strong>Total {monedaSeleccionada}:</strong>
+                    <h5 className="mb-0 text-success">
+                      {formatCurrency(totalMoneda, monedaSeleccionada)}
+                    </h5>
+                  </div>
+                )}
+                <Button
+                  variant="success"
+                  className="w-100"
+                  size="lg"
+                  onClick={procesarVenta}
+                  disabled={procesando}
+                >
+                  {procesando ? 'Procesando...' : (
+                    <>
+                      <i className="bi bi-check-circle me-2"></i>
+                      Procesar Venta
+                    </>
+                  )}
+                </Button>
+              </Card.Footer>
+            )}
+          </Card>
+        </Col>
+      </Row>
+    </div>
+  );
+};
+
+export default NuevaVentaScreen;
