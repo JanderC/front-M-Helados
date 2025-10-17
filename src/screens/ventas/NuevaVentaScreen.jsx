@@ -1,24 +1,26 @@
 import { useState, useEffect } from 'react';
-import { Row, Col, Card, Button, Form, Badge, ListGroup } from 'react-bootstrap';
+import { Row, Col, Card, Button, Form, Badge, ListGroup, Alert, Table } from 'react-bootstrap';
 import { productosService } from '../../api/services/productosService';
 import { toppingsService } from '../../api/services/toppingsService';
 import { ventasService } from '../../api/services/ventasService';
 import { monedasService } from '../../api/services/monedasService';
 import { toast } from 'react-toastify';
-import { formatCurrency } from '../../utils/formatters';
+import { formatCurrency, formatDateTime } from '../../utils/formatters';
+import DetalleVentaModal from '../../components/ventas/DetalleVentaModal';
 
 const NuevaVentaScreen = () => {
   const [productos, setProductos] = useState([]);
   const [toppings, setToppings] = useState([]);
-  const [monedas, setMonedas] = useState([]);
+  const [tasas, setTasas] = useState({ USD: 1, VES: 36, COP: 4000 });
   const [carrito, setCarrito] = useState([]);
-  const [monedaSeleccionada, setMonedaSeleccionada] = useState(1); // id_moneda USD
-  const [metodoPago, setMetodoPago] = useState('EFECTIVO');
-  const [notas, setNotas] = useState('');
+  const [monedaSeleccionada, setMonedaSeleccionada] = useState('USD');
   const [loading, setLoading] = useState(true);
   const [procesando, setProcesando] = useState(false);
   const [filtroCategoria, setFiltroCategoria] = useState('');
   const [categorias, setCategorias] = useState([]);
+  const [ventasRecientes, setVentasRecientes] = useState([]);
+  const [showDetalleModal, setShowDetalleModal] = useState(false);
+  const [ventaSeleccionada, setVentaSeleccionada] = useState(null);
 
   useEffect(() => {
     loadData();
@@ -27,29 +29,19 @@ const NuevaVentaScreen = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [prodResponse, toppResponse, monedasResponse, catResponse] = await Promise.all([
-        productosService.getAll({ disponible: true }),
-        toppingsService.getAll({ disponible: true }),
+      const [prodResponse, toppResponse, tasasResponse, catResponse, ventasResponse] = await Promise.all([
+        productosService.getAll(),
+        toppingsService.getAll(),
         monedasService.getTasas(),
-        productosService.getCategorias()
+        productosService.getCategorias(),
+        ventasService.getAll({ limit: 10 })
       ]);
       
-      if (prodResponse.data.success) {
-        setProductos(prodResponse.data.data || []);
-      }
-      
-      if (toppResponse.data.success) {
-        setToppings(toppResponse.data.data || []);
-      }
-
-      if (monedasResponse.data.success) {
-        setMonedas(monedasResponse.data.data || []);
-      }
-
-      if (catResponse.data.success) {
-        const nombresCategorias = catResponse.data.data.map(cat => cat.nombre_categoria);
-        setCategorias(nombresCategorias);
-      }
+      setProductos(prodResponse.data?.data || prodResponse.data || []);
+      setToppings(toppResponse.data?.data || toppResponse.data || []);
+      setTasas(tasasResponse.data?.data || tasasResponse.data || { USD: 1, VES: 36, COP: 4000 });
+      setCategorias(catResponse.data?.data || catResponse.data || []);
+      setVentasRecientes(ventasResponse.data?.data || ventasResponse.data || []);
     } catch (error) {
       console.error('Error al cargar datos:', error);
       toast.error('Error al cargar datos');
@@ -59,34 +51,38 @@ const NuevaVentaScreen = () => {
   };
 
   const agregarAlCarrito = (producto) => {
+    if (producto.stock <= 0) {
+      toast.error('Producto sin stock disponible');
+      return;
+    }
+
     const itemExistente = carrito.find(item => 
-      item.id_producto === producto.id_producto && item.toppings.length === 0
+      item.productoId === producto.id && item.toppings.length === 0
     );
 
     if (itemExistente) {
       setCarrito(carrito.map(item =>
-        item.carritoId === itemExistente.carritoId
+        item.id === itemExistente.id
           ? { ...item, cantidad: item.cantidad + 1 }
           : item
       ));
     } else {
       setCarrito([...carrito, {
-        carritoId: Date.now(),
-        id_producto: producto.id_producto,
-        nombre_producto: producto.nombre_producto,
-        precio_base: parseFloat(producto.precio_base),
+        id: Date.now(),
+        productoId: producto.id,
+        nombre: producto.nombre,
+        precio: producto.precio,
         cantidad: 1,
         toppings: [],
-        imagen_url: producto.imagen_url
+        imagenUrl: producto.imagenUrl
       }]);
     }
-    toast.success(`${producto.nombre_producto} agregado al carrito`);
   };
 
-  const agregarTopping = (carritoId, topping) => {
+  const agregarTopping = (itemId, topping) => {
     setCarrito(carrito.map(item => {
-      if (item.carritoId === carritoId) {
-        const toppingYaAgregado = item.toppings.find(t => t.id_topping === topping.id_topping);
+      if (item.id === itemId) {
+        const toppingYaAgregado = item.toppings.find(t => t.id === topping.id);
         if (toppingYaAgregado) {
           toast.warning('Este topping ya fue agregado');
           return item;
@@ -94,10 +90,9 @@ const NuevaVentaScreen = () => {
         return {
           ...item,
           toppings: [...item.toppings, {
-            id_topping: topping.id_topping,
-            nombre_topping: topping.nombre_topping,
-            precio_adicional: parseFloat(topping.precio_adicional),
-            cantidad: 1
+            id: topping.id,
+            nombre: topping.nombre,
+            precio: topping.precio
           }]
         };
       }
@@ -105,35 +100,35 @@ const NuevaVentaScreen = () => {
     }));
   };
 
-  const removerTopping = (carritoId, toppingId) => {
+  const removerTopping = (itemId, toppingId) => {
     setCarrito(carrito.map(item => {
-      if (item.carritoId === carritoId) {
+      if (item.id === itemId) {
         return {
           ...item,
-          toppings: item.toppings.filter(t => t.id_topping !== toppingId)
+          toppings: item.toppings.filter(t => t.id !== toppingId)
         };
       }
       return item;
     }));
   };
 
-  const actualizarCantidad = (carritoId, cantidad) => {
+  const actualizarCantidad = (itemId, cantidad) => {
     if (cantidad <= 0) {
-      setCarrito(carrito.filter(item => item.carritoId !== carritoId));
+      setCarrito(carrito.filter(item => item.id !== itemId));
     } else {
       setCarrito(carrito.map(item =>
-        item.carritoId === carritoId ? { ...item, cantidad } : item
+        item.id === itemId ? { ...item, cantidad } : item
       ));
     }
   };
 
-  const removerDelCarrito = (carritoId) => {
-    setCarrito(carrito.filter(item => item.carritoId !== carritoId));
+  const removerDelCarrito = (itemId) => {
+    setCarrito(carrito.filter(item => item.id !== itemId));
   };
 
   const calcularSubtotal = (item) => {
-    const precioBase = item.precio_base * item.cantidad;
-    const precioToppings = item.toppings.reduce((sum, t) => sum + (t.precio_adicional * t.cantidad), 0) * item.cantidad;
+    const precioBase = item.precio * item.cantidad;
+    const precioToppings = item.toppings.reduce((sum, t) => sum + t.precio, 0) * item.cantidad;
     return precioBase + precioToppings;
   };
 
@@ -150,30 +145,24 @@ const NuevaVentaScreen = () => {
     try {
       setProcesando(true);
 
-      // Estructura según la API
       const ventaData = {
-        productos: carrito.map(item => ({
-          id_producto: item.id_producto,
+        items: carrito.map(item => ({
+          productoId: item.productoId,
           cantidad: item.cantidad,
+          precio: item.precio,
           toppings: item.toppings.map(t => ({
-            id_topping: t.id_topping,
-            cantidad: t.cantidad
+            toppingId: t.id,
+            precio: t.precio
           }))
         })),
-        id_moneda: parseInt(monedaSeleccionada),
-        metodo_pago: metodoPago,
-        notas: notas.trim() || null
+        moneda: monedaSeleccionada,
+        total: calcularTotal()
       };
 
-      const response = await ventasService.create(ventaData);
-      
-      if (response.data.success) {
-        toast.success('¡Venta procesada exitosamente!');
-        toast.info(`Factura: ${response.data.data.numero_factura}`);
-        setCarrito([]);
-        setNotas('');
-        loadData(); // Recargar para actualizar stocks
-      }
+      await ventasService.create(ventaData);
+      toast.success('¡Venta procesada exitosamente!');
+      setCarrito([]);
+      loadData(); // Recargar para actualizar stocks y ventas recientes
     } catch (error) {
       console.error('Error al procesar venta:', error);
       toast.error(error.response?.data?.message || 'Error al procesar venta');
@@ -182,12 +171,30 @@ const NuevaVentaScreen = () => {
     }
   };
 
+  const abrirDetalleVenta = (ventaId) => {
+    setVentaSeleccionada(ventaId);
+    setShowDetalleModal(true);
+  };
+
+  const handleStatusChange = () => {
+    loadData(); // Recargar ventas cuando cambie el estado
+  };
+
+  const getEstadoBadge = (estado) => {
+    const badges = {
+      'PENDIENTE': { bg: 'warning', text: 'Pendiente' },
+      'COMPLETADA': { bg: 'success', text: 'Completada' },
+      'CANCELADA': { bg: 'danger', text: 'Cancelada' }
+    };
+    return badges[estado] || { bg: 'secondary', text: estado };
+  };
+
   const productosFiltrados = filtroCategoria
-    ? productos.filter(p => p.nombre_categoria === filtroCategoria)
+    ? productos.filter(p => p.categoria === filtroCategoria)
     : productos;
 
-  const monedaActual = monedas.find(m => m.id_moneda === parseInt(monedaSeleccionada));
   const totalUSD = calcularTotal();
+  const totalMoneda = totalUSD * (tasas[monedaSeleccionada] || 1);
 
   return (
     <div>
@@ -196,6 +203,17 @@ const NuevaVentaScreen = () => {
           <i className="bi bi-cart-plus me-2 text-primary"></i>
           Nueva Venta
         </h2>
+        <div className="d-flex gap-2">
+          <Form.Select
+            value={monedaSeleccionada}
+            onChange={(e) => setMonedaSeleccionada(e.target.value)}
+            style={{ width: '150px' }}
+          >
+            <option value="USD">USD ($)</option>
+            <option value="VES">VES (Bs.)</option>
+            <option value="COP">COP (COP$)</option>
+          </Form.Select>
+        </div>
       </div>
 
       <Row>
@@ -220,16 +238,16 @@ const NuevaVentaScreen = () => {
               ) : (
                 <Row>
                   {productosFiltrados.map(producto => (
-                    <Col key={producto.id_producto} md={6} lg={4} className="mb-3">
+                    <Col key={producto.id} md={6} lg={4} className="mb-3">
                       <Card 
                         className="h-100 border-0 shadow-sm"
                         style={{ cursor: 'pointer' }}
                         onClick={() => agregarAlCarrito(producto)}
                       >
-                        {producto.imagen_url ? (
+                        {producto.imagenUrl || producto.imagen_url ? (
                           <Card.Img
                             variant="top"
-                            src={producto.imagen_url}
+                            src={producto.imagenUrl || producto.imagen_url}
                             style={{ height: '150px', objectFit: 'cover' }}
                           />
                         ) : (
@@ -241,14 +259,14 @@ const NuevaVentaScreen = () => {
                           </div>
                         )}
                         <Card.Body>
-                          <Badge bg="primary" className="mb-2">{producto.nombre_categoria}</Badge>
-                          <Card.Title className="mb-1 small">{producto.nombre_producto}</Card.Title>
+                          <Badge bg="primary" className="mb-2">{producto.categoria}</Badge>
+                          <Card.Title className="mb-1 small">{producto.nombre}</Card.Title>
                           <div className="d-flex justify-content-between align-items-center">
                             <strong className="text-primary">
-                              {formatCurrency(producto.precio_base, 'USD')}
+                              {formatCurrency(producto.precio, 'USD')}
                             </strong>
-                            <Badge bg={producto.disponible ? 'success' : 'danger'}>
-                              {producto.disponible ? 'Disponible' : 'No disponible'}
+                            <Badge bg={producto.stock > 0 ? 'success' : 'danger'}>
+                              Stock: {producto.stock}
                             </Badge>
                           </div>
                         </Card.Body>
@@ -257,6 +275,69 @@ const NuevaVentaScreen = () => {
                   ))}
                 </Row>
               )}
+            </Card.Body>
+          </Card>
+
+          {/* Ventas Recientes */}
+          <Card className="border-0 shadow-sm">
+            <Card.Header className="bg-white">
+              <h5 className="mb-0">
+                <i className="bi bi-clock-history me-2"></i>
+                Ventas Recientes
+              </h5>
+            </Card.Header>
+            <Card.Body>
+              <div className="table-responsive">
+                <Table hover>
+                  <thead className="table-light">
+                    <tr>
+                      <th>#</th>
+                      <th>Fecha</th>
+                      <th>Total</th>
+                      <th>Moneda</th>
+                      <th>Estado</th>
+                      <th>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ventasRecientes.length === 0 ? (
+                      <tr>
+                        <td colSpan="6" className="text-center text-muted py-4">
+                          No hay ventas recientes
+                        </td>
+                      </tr>
+                    ) : (
+                      ventasRecientes.map(venta => (
+                        <tr key={venta.id || venta.id_venta}>
+                          <td>{venta.id || venta.id_venta}</td>
+                          <td>{formatDateTime(venta.fecha_venta || venta.created_at)}</td>
+                          <td className="fw-bold">
+                            {formatCurrency(venta.total || venta.monto_total, venta.codigo_moneda || 'USD')}
+                          </td>
+                          <td>
+                            <Badge bg="secondary">{venta.codigo_moneda || venta.moneda || 'USD'}</Badge>
+                          </td>
+                          <td>
+                            <Badge bg={getEstadoBadge(venta.estado_venta).bg}>
+                              {getEstadoBadge(venta.estado_venta).text}
+                            </Badge>
+                          </td>
+                          <td>
+                            <Button
+                              variant="outline-primary"
+                              size="sm"
+                              onClick={() => abrirDetalleVenta(venta.id || venta.id_venta)}
+                            >
+                              <i className="bi bi-eye me-1"></i>
+                              Ver
+                            </Button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </Table>
+              </div>
             </Card.Body>
           </Card>
         </Col>
@@ -279,19 +360,19 @@ const NuevaVentaScreen = () => {
               ) : (
                 <ListGroup variant="flush">
                   {carrito.map(item => (
-                    <ListGroup.Item key={item.carritoId} className="px-0">
+                    <ListGroup.Item key={item.id} className="px-0">
                       <div className="d-flex justify-content-between align-items-start mb-2">
                         <div className="flex-grow-1">
-                          <strong>{item.nombre_producto}</strong>
+                          <strong>{item.nombre}</strong>
                           <div className="small text-muted">
-                            {formatCurrency(item.precio_base, 'USD')} x {item.cantidad}
+                            {formatCurrency(item.precio, 'USD')} x {item.cantidad}
                           </div>
                         </div>
                         <Button
                           variant="link"
                           size="sm"
                           className="text-danger p-0"
-                          onClick={() => removerDelCarrito(item.carritoId)}
+                          onClick={() => removerDelCarrito(item.id)}
                         >
                           <i className="bi bi-trash"></i>
                         </Button>
@@ -302,15 +383,15 @@ const NuevaVentaScreen = () => {
                         <div className="mb-2">
                           {item.toppings.map(topping => (
                             <Badge
-                              key={topping.id_topping}
+                              key={topping.id}
                               bg="secondary"
                               className="me-1 mb-1"
                             >
-                              {topping.nombre_topping} (+{formatCurrency(topping.precio_adicional, 'USD')})
+                              {topping.nombre} (+{formatCurrency(topping.precio, 'USD')})
                               <i
                                 className="bi bi-x ms-1"
                                 style={{ cursor: 'pointer' }}
-                                onClick={() => removerTopping(item.carritoId, topping.id_topping)}
+                                onClick={() => removerTopping(item.id, topping.id)}
                               ></i>
                             </Badge>
                           ))}
@@ -321,17 +402,17 @@ const NuevaVentaScreen = () => {
                       <Form.Select
                         size="sm"
                         onChange={(e) => {
-                          const topping = toppings.find(t => t.id_topping === parseInt(e.target.value));
+                          const topping = toppings.find(t => t.id === parseInt(e.target.value));
                           if (topping) {
-                            agregarTopping(item.carritoId, topping);
+                            agregarTopping(item.id, topping);
                             e.target.value = '';
                           }
                         }}
                       >
                         <option value="">+ Agregar topping</option>
                         {toppings.map(topping => (
-                          <option key={topping.id_topping} value={topping.id_topping}>
-                            {topping.nombre_topping} (+{formatCurrency(topping.precio_adicional, 'USD')})
+                          <option key={topping.id} value={topping.id}>
+                            {topping.nombre} (+{formatCurrency(topping.precio, 'USD')})
                           </option>
                         ))}
                       </Form.Select>
@@ -341,7 +422,7 @@ const NuevaVentaScreen = () => {
                         <Button
                           variant="outline-secondary"
                           size="sm"
-                          onClick={() => actualizarCantidad(item.carritoId, item.cantidad - 1)}
+                          onClick={() => actualizarCantidad(item.id, item.cantidad - 1)}
                         >
                           <i className="bi bi-dash"></i>
                         </Button>
@@ -349,7 +430,7 @@ const NuevaVentaScreen = () => {
                         <Button
                           variant="outline-secondary"
                           size="sm"
-                          onClick={() => actualizarCantidad(item.carritoId, item.cantidad + 1)}
+                          onClick={() => actualizarCantidad(item.id, item.cantidad + 1)}
                         >
                           <i className="bi bi-plus"></i>
                         </Button>
@@ -365,57 +446,18 @@ const NuevaVentaScreen = () => {
             
             {carrito.length > 0 && (
               <Card.Footer className="bg-light">
-                {/* Método de pago */}
-                <Form.Group className="mb-3">
-                  <Form.Label className="small fw-bold">Método de Pago</Form.Label>
-                  <Form.Select
-                    size="sm"
-                    value={metodoPago}
-                    onChange={(e) => setMetodoPago(e.target.value)}
-                  >
-                    <option value="EFECTIVO">Efectivo</option>
-                    <option value="TARJETA">Tarjeta</option>
-                    <option value="TRANSFERENCIA">Transferencia</option>
-                    <option value="PAGO_MOVIL">Pago Móvil</option>
-                  </Form.Select>
-                </Form.Group>
-
-                {/* Moneda */}
-                <Form.Group className="mb-3">
-                  <Form.Label className="small fw-bold">Moneda</Form.Label>
-                  <Form.Select
-                    size="sm"
-                    value={monedaSeleccionada}
-                    onChange={(e) => setMonedaSeleccionada(e.target.value)}
-                  >
-                    {monedas.map(moneda => (
-                      <option key={moneda.id_moneda} value={moneda.id_moneda}>
-                        {moneda.codigo_moneda} ({moneda.simbolo})
-                      </option>
-                    ))}
-                  </Form.Select>
-                </Form.Group>
-
-                {/* Notas */}
-                <Form.Group className="mb-3">
-                  <Form.Label className="small fw-bold">Notas</Form.Label>
-                  <Form.Control
-                    as="textarea"
-                    rows={2}
-                    size="sm"
-                    placeholder="Ej: Sin nueces..."
-                    value={notas}
-                    onChange={(e) => setNotas(e.target.value)}
-                  />
-                </Form.Group>
-
-                <div className="d-flex justify-content-between align-items-center mb-3">
-                  <strong>Total:</strong>
-                  <h5 className="mb-0 text-success">
-                    {monedaActual?.simbolo || '$'} {totalUSD.toFixed(2)}
-                  </h5>
+                <div className="d-flex justify-content-between align-items-center mb-2">
+                  <strong>Total USD:</strong>
+                  <h5 className="mb-0 text-primary">{formatCurrency(totalUSD, 'USD')}</h5>
                 </div>
-
+                {monedaSeleccionada !== 'USD' && (
+                  <div className="d-flex justify-content-between align-items-center mb-3">
+                    <strong>Total {monedaSeleccionada}:</strong>
+                    <h5 className="mb-0 text-success">
+                      {formatCurrency(totalMoneda, monedaSeleccionada)}
+                    </h5>
+                  </div>
+                )}
                 <Button
                   variant="success"
                   className="w-100"
@@ -435,6 +477,14 @@ const NuevaVentaScreen = () => {
           </Card>
         </Col>
       </Row>
+
+      {/* Modal de Detalle de Venta */}
+      <DetalleVentaModal
+        show={showDetalleModal}
+        onHide={() => setShowDetalleModal(false)}
+        ventaId={ventaSeleccionada}
+        onStatusChange={handleStatusChange}
+      />
     </div>
   );
 };
