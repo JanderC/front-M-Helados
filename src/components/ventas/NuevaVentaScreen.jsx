@@ -160,8 +160,8 @@ const NuevaVentaScreen = () => {
 
   // CORRECCIÓN: Filtrar por nombre_categoria en lugar de categoria
   const productosFiltrados = filtroCategoria
-    ? productos.filter(p => p.categoria === filtroCategoria)
-    : productos;
+  ? productos.filter(p => p.nombre_categoria === filtroCategoria)
+  : productos;
 
   const totalUSD = calcularTotal();
   const totalMoneda = totalUSD * (tasas[monedaSeleccionada] || 1);
