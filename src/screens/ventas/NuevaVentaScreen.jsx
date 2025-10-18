@@ -12,6 +12,7 @@ const NuevaVentaScreen = () => {
   const [productos, setProductos] = useState([]);
   const [toppings, setToppings] = useState([]);
   const [tasas, setTasas] = useState({ USD: 1, VES: 36, COP: 4000 });
+  const [monedas, setMonedas] = useState([]);
   const [carrito, setCarrito] = useState([]);
   const [monedaSeleccionada, setMonedaSeleccionada] = useState('USD');
   const [loading, setLoading] = useState(true);
@@ -39,7 +40,21 @@ const NuevaVentaScreen = () => {
       
       setProductos(prodResponse.data?.data || prodResponse.data || []);
       setToppings(toppResponse.data?.data || toppResponse.data || []);
-      setTasas(tasasResponse.data?.data || tasasResponse.data || { USD: 1, VES: 36, COP: 4000 });
+      
+      // Guardar tanto las tasas como el array completo de monedas
+      const monedasData = tasasResponse.data?.data || tasasResponse.data;
+      if (Array.isArray(monedasData)) {
+        setMonedas(monedasData);
+        // Convertir array a objeto de tasas para facilitar cálculos
+        const tasasObj = {};
+        monedasData.forEach(m => {
+          tasasObj[m.codigo_moneda] = parseFloat(m.tasa_cambio_usd);
+        });
+        setTasas(tasasObj);
+      } else {
+        setTasas(monedasData || { USD: 1, VES: 36, COP: 4000 });
+      }
+      
       setCategorias(catResponse.data?.data || catResponse.data || []);
       setVentasRecientes(ventasResponse.data?.data || ventasResponse.data || []);
     } catch (error) {
@@ -145,6 +160,14 @@ const NuevaVentaScreen = () => {
     try {
       setProcesando(true);
 
+      // Buscar el id_moneda correspondiente al código seleccionado
+      const monedaObj = monedas.find(m => m.codigo_moneda === monedaSeleccionada);
+      
+      if (!monedaObj) {
+        toast.error('Moneda no válida');
+        return;
+      }
+
       // Estructura que el backend espera
       const ventaData = {
         productos: carrito.map(item => ({
@@ -156,7 +179,7 @@ const NuevaVentaScreen = () => {
             precio_unitario: t.precio
           }))
         })),
-        codigo_moneda: monedaSeleccionada,
+        id_moneda: monedaObj.id_moneda, // Usar el ID de la moneda
         monto_total: calcularTotal()
       };
 
@@ -212,11 +235,21 @@ const NuevaVentaScreen = () => {
           <Form.Select
             value={monedaSeleccionada}
             onChange={(e) => setMonedaSeleccionada(e.target.value)}
-            style={{ width: '150px' }}
+            style={{ width: '200px' }}
           >
-            <option value="USD">USD ($)</option>
-            <option value="VES">VES (Bs.)</option>
-            <option value="COP">COP (COP$)</option>
+            {monedas.length > 0 ? (
+              monedas.map(moneda => (
+                <option key={moneda.id_moneda} value={moneda.codigo_moneda}>
+                  {moneda.codigo_moneda} ({moneda.simbolo})
+                </option>
+              ))
+            ) : (
+              <>
+                <option value="USD">USD ($)</option>
+                <option value="VES">VES (Bs.)</option>
+                <option value="COP">COP ($)</option>
+              </>
+            )}
           </Form.Select>
         </div>
       </div>
