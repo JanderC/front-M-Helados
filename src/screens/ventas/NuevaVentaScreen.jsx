@@ -57,7 +57,7 @@ const NuevaVentaScreen = () => {
     }
 
     const itemExistente = carrito.find(item => 
-      item.productoId === producto.id_producto && item.toppings.length === 0
+      item.id_producto === producto.id_producto && item.toppings.length === 0
     );
 
     if (itemExistente) {
@@ -69,9 +69,9 @@ const NuevaVentaScreen = () => {
     } else {
       setCarrito([...carrito, {
         id: Date.now(),
-        productoId: producto.id_producto,
+        id_producto: producto.id_producto,
         nombre: producto.nombre_producto,
-        precio: parseFloat(producto.precio_base), // Convertir string a número
+        precio: parseFloat(producto.precio_base),
         cantidad: 1,
         toppings: [],
         imagenUrl: producto.imagen_url
@@ -82,7 +82,7 @@ const NuevaVentaScreen = () => {
   const agregarTopping = (itemId, topping) => {
     setCarrito(carrito.map(item => {
       if (item.id === itemId) {
-        const toppingYaAgregado = item.toppings.find(t => t.id === topping.id);
+        const toppingYaAgregado = item.toppings.find(t => t.id_topping === topping.id_topping);
         if (toppingYaAgregado) {
           toast.warning('Este topping ya fue agregado');
           return item;
@@ -90,9 +90,9 @@ const NuevaVentaScreen = () => {
         return {
           ...item,
           toppings: [...item.toppings, {
-            id: topping.id,
-            nombre: topping.nombre,
-            precio: parseFloat(topping.precio) // Convertir string a número
+            id_topping: topping.id_topping,
+            nombre: topping.nombre_topping,
+            precio: parseFloat(topping.precio_adicional)
           }]
         };
       }
@@ -105,7 +105,7 @@ const NuevaVentaScreen = () => {
       if (item.id === itemId) {
         return {
           ...item,
-          toppings: item.toppings.filter(t => t.id !== toppingId)
+          toppings: item.toppings.filter(t => t.id_topping !== toppingId)
         };
       }
       return item;
@@ -145,28 +145,31 @@ const NuevaVentaScreen = () => {
     try {
       setProcesando(true);
 
+      // Estructura que el backend espera
       const ventaData = {
-        items: carrito.map(item => ({
-          productoId: item.productoId,
+        productos: carrito.map(item => ({
+          id_producto: item.id_producto,
           cantidad: item.cantidad,
-          precio: item.precio,
+          precio_unitario: item.precio,
           toppings: item.toppings.map(t => ({
-            toppingId: t.id,
-            precio: t.precio
+            id_topping: t.id_topping,
+            precio_unitario: t.precio
           }))
         })),
-        moneda: monedaSeleccionada,
-        total: calcularTotal()
+        codigo_moneda: monedaSeleccionada,
+        monto_total: calcularTotal()
       };
 
-      console.log('Enviando venta:', ventaData); // Para debug
-      await ventasService.create(ventaData);
+      console.log('Enviando venta:', ventaData);
+      const response = await ventasService.create(ventaData);
+      console.log('Respuesta:', response.data);
+      
       toast.success('¡Venta procesada exitosamente!');
       setCarrito([]);
-      loadData(); // Recargar para actualizar stocks y ventas recientes
+      loadData();
     } catch (error) {
       console.error('Error al procesar venta:', error);
-      console.error('Respuesta del servidor:', error.response?.data); // Para debug
+      console.error('Respuesta del servidor:', error.response?.data);
       toast.error(error.response?.data?.message || 'Error al procesar venta');
     } finally {
       setProcesando(false);
@@ -179,7 +182,7 @@ const NuevaVentaScreen = () => {
   };
 
   const handleStatusChange = () => {
-    loadData(); // Recargar ventas cuando cambie el estado
+    loadData();
   };
 
   const getEstadoBadge = (estado) => {
@@ -312,14 +315,14 @@ const NuevaVentaScreen = () => {
                       </tr>
                     ) : (
                       ventasRecientes.map(venta => (
-                        <tr key={venta.id || venta.id_venta}>
-                          <td>{venta.id || venta.id_venta}</td>
-                          <td>{formatDateTime(venta.fecha_venta || venta.created_at)}</td>
+                        <tr key={venta.id_venta}>
+                          <td>{venta.id_venta}</td>
+                          <td>{formatDateTime(venta.fecha_venta)}</td>
                           <td className="fw-bold">
-                            {formatCurrency(venta.total || venta.monto_total, venta.codigo_moneda || 'USD')}
+                            {formatCurrency(parseFloat(venta.monto_total), venta.codigo_moneda)}
                           </td>
                           <td>
-                            <Badge bg="secondary">{venta.codigo_moneda || venta.moneda || 'USD'}</Badge>
+                            <Badge bg="secondary">{venta.codigo_moneda}</Badge>
                           </td>
                           <td>
                             <Badge bg={getEstadoBadge(venta.estado_venta).bg}>
@@ -330,7 +333,7 @@ const NuevaVentaScreen = () => {
                             <Button
                               variant="outline-primary"
                               size="sm"
-                              onClick={() => abrirDetalleVenta(venta.id || venta.id_venta)}
+                              onClick={() => abrirDetalleVenta(venta.id_venta)}
                             >
                               <i className="bi bi-eye me-1"></i>
                               Ver
@@ -387,7 +390,7 @@ const NuevaVentaScreen = () => {
                         <div className="mb-2">
                           {item.toppings.map(topping => (
                             <Badge
-                              key={topping.id}
+                              key={topping.id_topping}
                               bg="secondary"
                               className="me-1 mb-1"
                             >
@@ -395,7 +398,7 @@ const NuevaVentaScreen = () => {
                               <i
                                 className="bi bi-x ms-1"
                                 style={{ cursor: 'pointer' }}
-                                onClick={() => removerTopping(item.id, topping.id)}
+                                onClick={() => removerTopping(item.id, topping.id_topping)}
                               ></i>
                             </Badge>
                           ))}
@@ -406,7 +409,7 @@ const NuevaVentaScreen = () => {
                       <Form.Select
                         size="sm"
                         onChange={(e) => {
-                          const topping = toppings.find(t => t.id === parseInt(e.target.value));
+                          const topping = toppings.find(t => t.id_topping === parseInt(e.target.value));
                           if (topping) {
                             agregarTopping(item.id, topping);
                             e.target.value = '';
@@ -415,8 +418,8 @@ const NuevaVentaScreen = () => {
                       >
                         <option value="">+ Agregar topping</option>
                         {toppings.map(topping => (
-                          <option key={topping.id} value={topping.id}>
-                            {topping.nombre} (+{formatCurrency(parseFloat(topping.precio || 0), 'USD')})
+                          <option key={topping.id_topping} value={topping.id_topping}>
+                            {topping.nombre_topping} (+{formatCurrency(parseFloat(topping.precio_adicional), 'USD')})
                           </option>
                         ))}
                       </Form.Select>
