@@ -189,6 +189,13 @@ const NuevaVentaScreen = () => {
       
       toast.success('¡Venta procesada exitosamente!');
       setCarrito([]);
+      
+      // Abrir modal con el detalle de la venta recién creada
+      if (response.data?.data?.id_venta) {
+        setVentaSeleccionada(response.data.data.id_venta);
+        setShowDetalleModal(true);
+      }
+      
       loadData();
     } catch (error) {
       console.error('Error al procesar venta:', error);
@@ -331,7 +338,7 @@ const NuevaVentaScreen = () => {
                 <Table hover>
                   <thead className="table-light">
                     <tr>
-                      <th>#</th>
+                      <th>Factura</th>
                       <th>Fecha</th>
                       <th>Total</th>
                       <th>Moneda</th>
@@ -349,10 +356,10 @@ const NuevaVentaScreen = () => {
                     ) : (
                       ventasRecientes.map(venta => (
                         <tr key={venta.id_venta}>
-                          <td>{venta.id_venta}</td>
+                          <td>{venta.numero_factura}</td>
                           <td>{formatDateTime(venta.fecha_venta)}</td>
                           <td className="fw-bold">
-                            {formatCurrency(parseFloat(venta.monto_total), venta.codigo_moneda)}
+                            {formatCurrency(parseFloat(venta.total || venta.monto_total || 0), venta.codigo_moneda)}
                           </td>
                           <td>
                             <Badge bg="secondary">{venta.codigo_moneda}</Badge>
