@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Modal, Form, Button, Row, Col } from 'react-bootstrap';
+import { useState, useEffect, useRef } from 'react';
+import { Modal, Form, Button, Row, Col, Alert } from 'react-bootstrap';
 import { productosService } from '../../api/services/productosService';
 import { toast } from 'react-toastify';
 
@@ -15,6 +15,9 @@ const ProductoFormModal = ({ show, onHide, producto, onSaveSuccess, categorias }
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
   const [categoriasCompletas, setCategoriasCompletas] = useState([]);
+  const [imagePreview, setImagePreview] = useState(null);
+  const [imageError, setImageError] = useState('');
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     loadCategoriasCompletas();
@@ -30,6 +33,7 @@ const ProductoFormModal = ({ show, onHide, producto, onSaveSuccess, categorias }
         costo_produccion: producto.costo_produccion || '',
         imagen_url: producto.imagen_url || ''
       });
+      setImagePreview(producto.imagen_url || null);
     } else {
       resetForm();
     }
@@ -56,6 +60,11 @@ const ProductoFormModal = ({ show, onHide, producto, onSaveSuccess, categorias }
       imagen_url: ''
     });
     setErrors({});
+    setImagePreview(null);
+    setImageError('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const handleChange = (e) => {
@@ -64,12 +73,64 @@ const ProductoFormModal = ({ show, onHide, producto, onSaveSuccess, categorias }
       ...formData,
       [name]: value
     });
-    // Limpiar error del campo
     if (errors[name]) {
       setErrors({
         ...errors,
         [name]: null
       });
+    }
+  };
+
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    setImageError('');
+
+    if (!file) {
+      return;
+    }
+
+    // Validar tipo de archivo
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (!validTypes.includes(file.type)) {
+      setImageError('Formato de imagen no válido. Use JPG, PNG, GIF o WEBP');
+      e.target.value = '';
+      return;
+    }
+
+    // Validar tamaño (máximo 5MB)
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      setImageError('La imagen es muy grande. Tamaño máximo: 5MB');
+      e.target.value = '';
+      return;
+    }
+
+    // Convertir a base64
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = reader.result;
+      setFormData({
+        ...formData,
+        imagen_url: base64String
+      });
+      setImagePreview(base64String);
+    };
+    reader.onerror = () => {
+      setImageError('Error al leer la imagen');
+      e.target.value = '';
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveImage = () => {
+    setFormData({
+      ...formData,
+      imagen_url: ''
+    });
+    setImagePreview(null);
+    setImageError('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
@@ -112,7 +173,7 @@ const ProductoFormModal = ({ show, onHide, producto, onSaveSuccess, categorias }
         id_categoria: parseInt(formData.id_categoria),
         precio_base: parseFloat(formData.precio_base),
         costo_produccion: parseFloat(formData.costo_produccion),
-        imagen_url: formData.imagen_url.trim() || null
+        imagen_url: formData.imagen_url || null
       };
 
       if (producto) {
@@ -243,41 +304,74 @@ const ProductoFormModal = ({ show, onHide, producto, onSaveSuccess, categorias }
             </Col>
           </Row>
 
+          {/* Sección de Imagen */}
           <Form.Group className="mb-3">
-            <Form.Label>URL de Imagen</Form.Label>
+            <Form.Label>Imagen del Producto</Form.Label>
             <Form.Control
-              type="text"
-              name="imagen_url"
-              value={formData.imagen_url}
-              onChange={handleChange}
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+              onChange={handleImageChange}
               disabled={loading}
-              placeholder="https://ejemplo.com/imagen.jpg"
             />
             <Form.Text className="text-muted">
-              Ingresa la URL de la imagen del producto
+              Formatos: JPG, PNG, GIF, WEBP. Tamaño máximo: 5MB
             </Form.Text>
+            {imageError && (
+              <Alert variant="danger" className="mt-2 mb-0 py-2">
+                <i className="bi bi-exclamation-circle me-2"></i>
+                {imageError}
+              </Alert>
+            )}
           </Form.Group>
 
-          {formData.imagen_url && (
-            <div className="text-center">
-              <img
-                src={formData.imagen_url}
-                alt="Preview"
-                style={{ maxWidth: '200px', maxHeight: '200px', objectFit: 'cover' }}
-                className="rounded"
-                onError={(e) => {
-                  e.target.style.display = 'none';
-                }}
-              />
+          {/* Vista previa de imagen */}
+          {imagePreview && (
+            <div className="text-center mb-3">
+              <div className="position-relative d-inline-block">
+                <img
+                  src={imagePreview}
+                  alt="Preview"
+                  style={{ 
+                    maxWidth: '100%', 
+                    maxHeight: '250px', 
+                    objectFit: 'contain',
+                    borderRadius: '8px',
+                    border: '2px solid #dee2e6'
+                  }}
+                  className="shadow-sm"
+                />
+                <Button
+                  variant="danger"
+                  size="sm"
+                  className="position-absolute top-0 end-0 m-2"
+                  onClick={handleRemoveImage}
+                  disabled={loading}
+                  style={{ borderRadius: '50%', width: '32px', height: '32px', padding: 0 }}
+                >
+                  <i className="bi bi-x-lg"></i>
+                </Button>
+              </div>
+              <div className="mt-2 text-muted small">
+                <i className="bi bi-info-circle me-1"></i>
+                Vista previa de la imagen
+              </div>
             </div>
-          )}
+          )}  
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={handleClose} disabled={loading}>
             Cancelar
           </Button>
           <Button variant="primary" type="submit" disabled={loading}>
-            {loading ? 'Guardando...' : (producto ? 'Actualizar' : 'Crear')}
+            {loading ? (
+              <>
+                <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                Guardando...
+              </>
+            ) : (
+              producto ? 'Actualizar' : 'Crear'
+            )}
           </Button>
         </Modal.Footer>
       </Form>

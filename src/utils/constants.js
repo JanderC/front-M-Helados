@@ -43,6 +43,7 @@ export const RUTAS_ADMIN = [
   { path: '/ventas', name: 'Nueva Venta', icon: 'bi-cart-plus' },
   { path: '/ventas/lista', name: 'Lista Ventas', icon: 'bi-list-ul' },
   { path: '/caja', name: 'Flujo de Caja', icon: 'bi-cash-stack' },
+  { path: '/tasas', name: 'Tasas de Cambio', icon: 'bi-currency-exchange' },
   { path: '/reportes', name: 'Reportes', icon: 'bi-graph-up' }
 ];
 

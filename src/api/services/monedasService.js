@@ -17,19 +17,26 @@ export const monedasService = {
   },
 
   // Actualizar manual
-  actualizarManual: (moneda, tasa) => {
+  actualizarManual: (codigo_moneda, tasa_cambio_usd) => {
     return api.put('/monedas/actualizar-manual', {
-      moneda,
-      tasa
+      codigo_moneda,
+      tasa_cambio_usd
+    });
+  },
+
+  // Actualizar múltiples tasas
+  actualizarMultiples: (tasas) => {
+    return api.put('/monedas/actualizar-multiples', {
+      tasas
     });
   },
 
   // Convertir monedas
-  convertir: (monto, monedaOrigen, monedaDestino) => {
+  convertir: (monto, moneda_origen, moneda_destino) => {
     return api.post('/monedas/convertir', {
       monto,
-      monedaOrigen,
-      monedaDestino
+      moneda_origen,
+      moneda_destino
     });
   }
 };

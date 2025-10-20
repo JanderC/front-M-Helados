@@ -9,7 +9,12 @@ const ProductoCard = ({ producto, onEdit, onDelete }) => {
           <Card.Img
             variant="top"
             src={producto.imagen_url}
+            alt={producto.nombre_producto}
             style={{ height: '200px', objectFit: 'cover' }}
+            onError={(e) => {
+              e.target.style.display = 'none';
+              e.target.nextElementSibling.style.display = 'flex';
+            }}
           />
         ) : (
           <div
@@ -19,6 +24,14 @@ const ProductoCard = ({ producto, onEdit, onDelete }) => {
             <i className="bi bi-image text-muted" style={{ fontSize: '3rem' }}></i>
           </div>
         )}
+        {/* Fallback en caso de error de imagen */}
+        <div
+          className="bg-light align-items-center justify-content-center"
+          style={{ height: '200px', display: 'none' }}
+        >
+          <i className="bi bi-image-fill text-muted" style={{ fontSize: '3rem' }}></i>
+        </div>
+        
         <div className="position-absolute top-0 end-0 m-2">
           <Badge bg={producto.disponible ? 'success' : 'danger'}>
             {producto.disponible ? 'Disponible' : 'No disponible'}

@@ -10,8 +10,10 @@ import ToppingsScreen from './screens/inventario/ToppingsScreen';
 import NuevaVentaScreen from './screens/ventas/NuevaVentaScreen';
 import ListaVentasScreen from './screens/ventas/ListaVentasScreen';
 import PedidosScreen from './screens/despensador/PedidosScreen';
+import DisplayScreen from './screens/empleado/DisplayScreen';
 import FlujoCajaScreen from './screens/caja/FlujoCajaScreen';
 import ReportesScreen from './screens/reportes/ReportesScreen';
+import TasasScreen from './screens/tasas/TasasScreen';
 
 export const router = createBrowserRouter([
   {
@@ -87,6 +89,14 @@ export const router = createBrowserRouter([
     )
   },
   {
+    path: '/display',
+    element: (
+      <ProtectedRoute>
+        <DisplayScreen />
+      </ProtectedRoute>
+    )
+  },
+  {
     path: '/caja',
     element: (
       <ProtectedRoute requireAdmin>
@@ -102,6 +112,16 @@ export const router = createBrowserRouter([
       <ProtectedRoute requireAdmin>
         <Layout>
           <ReportesScreen />
+        </Layout>
+      </ProtectedRoute>
+    )
+  },
+  {
+    path: '/tasas',
+    element: (
+      <ProtectedRoute requireAdmin>
+        <Layout>
+          <TasasScreen />
         </Layout>
       </ProtectedRoute>
     )

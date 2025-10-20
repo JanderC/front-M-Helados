@@ -1,17 +1,16 @@
 import { useState, useEffect } from 'react';
-import { Row, Col, Card, Badge, Button, Alert } from 'react-bootstrap';
+import { Row, Col, Card, Badge, Button, Alert, Modal } from 'react-bootstrap';
 import { ventasService } from '../../api/services/ventasService';
 import { useSocket } from '../../hooks/useSocket';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
-import { ESTADOS_PEDIDO, COLORES_ESTADO } from '../../utils/constants';
 import { toast } from 'react-toastify';
-import DetalleVentaModal from '../../components/ventas/DetalleVentaModal';
 
 const PedidosScreen = () => {
   const [pedidos, setPedidos] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
+  const [showDetalleModal, setShowDetalleModal] = useState(false);
   const [pedidoSeleccionado, setPedidoSeleccionado] = useState(null);
+  const [procesando, setProcesando] = useState(false);
   const { socket, connected } = useSocket();
 
   useEffect(() => {
@@ -20,33 +19,51 @@ const PedidosScreen = () => {
 
   useEffect(() => {
     if (socket && connected) {
+      console.log('👂 Escuchando eventos de socket...');
+
       // Escuchar nuevo pedido
-      socket.on('nuevo-pedido', (pedido) => {
-        toast.info(`¡Nuevo pedido #${pedido.id}!`, {
+      socket.on('pedido_nuevo', (data) => {
+        console.log('📦 Nuevo pedido recibido:', data);
+        toast.info(`¡Nuevo pedido #${data.venta.numero_factura || data.venta.id_venta}!`, {
           autoClose: 5000,
           position: 'top-right'
         });
-        setPedidos(prev => [pedido, ...prev]);
-      });
-
-      // Escuchar actualización de pedido
-      socket.on('pedido-actualizado', (pedido) => {
-        setPedidos(prev =>
-          prev.map(p => p.id === pedido.id ? pedido : p)
-        );
         
-        // Si el pedido seleccionado se actualizó, actualizar el modal
-        if (pedidoSeleccionado && pedidoSeleccionado.id === pedido.id) {
-          setPedidoSeleccionado(pedido);
+        const nuevoPedido = data.venta;
+        // Solo agregar si es PENDIENTE o EN_PROCESO
+        if (nuevoPedido.estado_venta === 'PENDIENTE' || nuevoPedido.estado_venta === 'EN_PROCESO') {
+          setPedidos(prev => {
+            const existe = prev.find(p => p.id_venta === nuevoPedido.id_venta);
+            if (existe) return prev;
+            return [nuevoPedido, ...prev];
+          });
         }
       });
 
+      // Escuchar actualización de pedido
+      socket.on('estado_pedido_actualizado', (data) => {
+        console.log('🔄 Estado actualizado:', data);
+        setPedidos(prev => {
+          // Si el pedido se completó o canceló, removerlo
+          if (data.estado_venta === 'COMPLETADA' || data.estado_venta === 'CANCELADA') {
+            return prev.filter(p => p.id_venta !== data.id_venta);
+          }
+          
+          // Actualizar estado del pedido existente
+          return prev.map(p => 
+            p.id_venta === data.id_venta 
+              ? { ...p, estado_venta: data.estado_venta, ...data.venta }
+              : p
+          );
+        });
+      });
+
       return () => {
-        socket.off('nuevo-pedido');
-        socket.off('pedido-actualizado');
+        socket.off('pedido_nuevo');
+        socket.off('estado_pedido_actualizado');
       };
     }
-  }, [socket, connected, pedidoSeleccionado]);
+  }, [socket, connected]);
 
   const loadPedidos = async () => {
     try {
@@ -54,7 +71,9 @@ const PedidosScreen = () => {
       const response = await ventasService.getAll({
         estado: 'PENDIENTE,EN_PROCESO'
       });
-      setPedidos(response.data);
+      
+      const data = response.data?.data || response.data;
+      setPedidos(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error al cargar pedidos:', error);
       toast.error('Error al cargar pedidos');
@@ -63,37 +82,51 @@ const PedidosScreen = () => {
     }
   };
 
-  const handleVerDetalle = async (pedido) => {
-    try {
-      const response = await ventasService.getById(pedido.id);
-      setPedidoSeleccionado(response.data);
-      setShowModal(true);
-    } catch (error) {
-      console.error('Error al cargar detalle:', error);
-      toast.error('Error al cargar detalle del pedido');
-    }
+  const handleVerDetalle = (pedido) => {
+    setPedidoSeleccionado(pedido);
+    setShowDetalleModal(true);
   };
 
   const handleCambiarEstado = async (pedidoId, nuevoEstado) => {
     try {
+      setProcesando(true);
       await ventasService.cambiarEstado(pedidoId, nuevoEstado);
-      toast.success(`Pedido marcado como ${nuevoEstado}`);
+      
+      toast.success(`Pedido ${nuevoEstado === 'COMPLETADA' ? 'completado' : 'actualizado'} correctamente`);
+      
+      // Notificar por socket
+      if (socket) {
+        socket.emit('cambiar_estado_pedido', {
+          id_venta: pedidoId,
+          estado_venta: nuevoEstado
+        });
+      }
+      
       loadPedidos();
     } catch (error) {
       console.error('Error al cambiar estado:', error);
       toast.error('Error al cambiar estado del pedido');
+    } finally {
+      setProcesando(false);
     }
   };
 
-  const pedidosPendientes = pedidos.filter(p => p.estado === 'PENDIENTE');
-  const pedidosEnProceso = pedidos.filter(p => p.estado === 'EN_PROCESO');
+  const handleCancelar = async (pedidoId) => {
+    if (!window.confirm('¿Estás seguro de cancelar este pedido?')) {
+      return;
+    }
+    await handleCambiarEstado(pedidoId, 'CANCELADA');
+  };
+
+  const pedidosPendientes = pedidos.filter(p => p.estado_venta === 'PENDIENTE');
+  const pedidosEnProceso = pedidos.filter(p => p.estado_venta === 'EN_PROCESO');
 
   return (
     <div>
       <div className="d-flex justify-content-between align-items-center mb-4">
         <h2 className="fw-bold">
           <i className="bi bi-clipboard-check me-2 text-primary"></i>
-          Pedidos en Tiempo Real
+          Gestión de Pedidos
         </h2>
         <Badge bg={connected ? 'success' : 'danger'} className="fs-6">
           <i className={`bi ${connected ? 'bi-wifi' : 'bi-wifi-off'} me-1`}></i>
@@ -118,7 +151,7 @@ const PedidosScreen = () => {
                 Pendientes ({pedidosPendientes.length})
               </h5>
             </Card.Header>
-            <Card.Body style={{ maxHeight: '600px', overflowY: 'auto' }}>
+            <Card.Body style={{ maxHeight: '70vh', overflowY: 'auto' }}>
               {loading ? (
                 <div className="text-center py-5">
                   <div className="spinner-border text-primary" role="status">
@@ -133,13 +166,15 @@ const PedidosScreen = () => {
               ) : (
                 <div className="d-flex flex-column gap-3">
                   {pedidosPendientes.map(pedido => (
-                    <Card key={pedido.id} className="border-start border-warning border-4">
+                    <Card key={pedido.id_venta} className="border-start border-warning border-4">
                       <Card.Body>
                         <div className="d-flex justify-content-between align-items-start mb-2">
                           <div>
-                            <h5 className="mb-1">Pedido #{pedido.id}</h5>
+                            <h5 className="mb-1">
+                              Pedido #{pedido.numero_factura || pedido.id_venta}
+                            </h5>
                             <small className="text-muted">
-                              {formatDateTime(pedido.createdAt)}
+                              {formatDateTime(pedido.fecha_venta || pedido.created_at)}
                             </small>
                           </div>
                           <Badge bg="warning" text="dark" className="fs-6">
@@ -149,23 +184,51 @@ const PedidosScreen = () => {
 
                         <div className="mb-3">
                           <strong className="text-primary fs-5">
-                            {formatCurrency(pedido.total, pedido.moneda)}
+                            {formatCurrency(pedido.total || pedido.monto_total, pedido.codigo_moneda || 'USD')}
                           </strong>
-                          <span className="ms-2 text-muted">({pedido.moneda})</span>
+                          <span className="ms-2 text-muted">({pedido.codigo_moneda || 'USD'})</span>
                         </div>
 
+                        {/* Items con imágenes */}
                         <div className="mb-3">
-                          <small className="text-muted d-block mb-1">
-                            {pedido.items?.length || 0} producto(s)
+                          <small className="text-muted d-block mb-2">
+                            <strong>{(pedido.items || pedido.detalles || []).length} producto(s)</strong>
                           </small>
-                          {pedido.items?.slice(0, 2).map((item, idx) => (
-                            <div key={idx} className="small">
-                              • {item.nombreProducto || 'Producto'} x{item.cantidad}
+                          {(pedido.items || pedido.detalles || []).slice(0, 3).map((item, idx) => (
+                            <div key={idx} className="d-flex align-items-center mb-2 p-2 bg-light rounded">
+                              {item.imagen_url ? (
+                                <img
+                                  src={item.imagen_url}
+                                  alt={item.nombre_producto || item.nombre}
+                                  style={{
+                                    width: '50px',
+                                    height: '50px',
+                                    objectFit: 'cover',
+                                    borderRadius: '8px',
+                                    marginRight: '10px'
+                                  }}
+                                />
+                              ) : (
+                                <div
+                                  className="bg-secondary rounded d-flex align-items-center justify-content-center me-2"
+                                  style={{ width: '50px', height: '50px' }}
+                                >
+                                  <i className="bi bi-image text-white"></i>
+                                </div>
+                              )}
+                              <div className="flex-grow-1">
+                                <div className="fw-bold small">
+                                  {item.nombre_producto || item.nombre}
+                                </div>
+                                <div className="text-muted small">
+                                  Cantidad: {item.cantidad}
+                                </div>
+                              </div>
                             </div>
                           ))}
-                          {pedido.items?.length > 2 && (
+                          {(pedido.items || pedido.detalles || []).length > 3 && (
                             <small className="text-muted">
-                              +{pedido.items.length - 2} más...
+                              +{(pedido.items || pedido.detalles || []).length - 3} más...
                             </small>
                           )}
                         </div>
@@ -173,19 +236,32 @@ const PedidosScreen = () => {
                         <div className="d-grid gap-2">
                           <Button
                             variant="primary"
-                            onClick={() => handleCambiarEstado(pedido.id, 'EN_PROCESO')}
+                            onClick={() => handleCambiarEstado(pedido.id_venta, 'EN_PROCESO')}
+                            disabled={procesando}
                           >
                             <i className="bi bi-play-circle me-2"></i>
                             Iniciar Preparación
                           </Button>
-                          <Button
-                            variant="outline-secondary"
-                            size="sm"
-                            onClick={() => handleVerDetalle(pedido)}
-                          >
-                            <i className="bi bi-eye me-1"></i>
-                            Ver Detalle
-                          </Button>
+                          <div className="d-flex gap-2">
+                            <Button
+                              variant="outline-info"
+                              size="sm"
+                              className="flex-grow-1"
+                              onClick={() => handleVerDetalle(pedido)}
+                            >
+                              <i className="bi bi-eye me-1"></i>
+                              Ver Detalle
+                            </Button>
+                            <Button
+                              variant="outline-danger"
+                              size="sm"
+                              onClick={() => handleCancelar(pedido.id_venta)}
+                              disabled={procesando}
+                            >
+                              <i className="bi bi-x-circle me-1"></i>
+                              Cancelar
+                            </Button>
+                          </div>
                         </div>
                       </Card.Body>
                     </Card>
@@ -205,7 +281,7 @@ const PedidosScreen = () => {
                 En Proceso ({pedidosEnProceso.length})
               </h5>
             </Card.Header>
-            <Card.Body style={{ maxHeight: '600px', overflowY: 'auto' }}>
+            <Card.Body style={{ maxHeight: '70vh', overflowY: 'auto' }}>
               {loading ? (
                 <div className="text-center py-5">
                   <div className="spinner-border text-primary" role="status">
@@ -220,13 +296,15 @@ const PedidosScreen = () => {
               ) : (
                 <div className="d-flex flex-column gap-3">
                   {pedidosEnProceso.map(pedido => (
-                    <Card key={pedido.id} className="border-start border-info border-4">
+                    <Card key={pedido.id_venta} className="border-start border-info border-4">
                       <Card.Body>
                         <div className="d-flex justify-content-between align-items-start mb-2">
                           <div>
-                            <h5 className="mb-1">Pedido #{pedido.id}</h5>
+                            <h5 className="mb-1">
+                              Pedido #{pedido.numero_factura || pedido.id_venta}
+                            </h5>
                             <small className="text-muted">
-                              {formatDateTime(pedido.createdAt)}
+                              {formatDateTime(pedido.fecha_venta || pedido.created_at)}
                             </small>
                           </div>
                           <Badge bg="info" className="fs-6">
@@ -236,23 +314,51 @@ const PedidosScreen = () => {
 
                         <div className="mb-3">
                           <strong className="text-primary fs-5">
-                            {formatCurrency(pedido.total, pedido.moneda)}
+                            {formatCurrency(pedido.total || pedido.monto_total, pedido.codigo_moneda || 'USD')}
                           </strong>
-                          <span className="ms-2 text-muted">({pedido.moneda})</span>
+                          <span className="ms-2 text-muted">({pedido.codigo_moneda || 'USD'})</span>
                         </div>
 
+                        {/* Items con imágenes */}
                         <div className="mb-3">
-                          <small className="text-muted d-block mb-1">
-                            {pedido.items?.length || 0} producto(s)
+                          <small className="text-muted d-block mb-2">
+                            <strong>{(pedido.items || pedido.detalles || []).length} producto(s)</strong>
                           </small>
-                          {pedido.items?.slice(0, 2).map((item, idx) => (
-                            <div key={idx} className="small">
-                              • {item.nombreProducto || 'Producto'} x{item.cantidad}
+                          {(pedido.items || pedido.detalles || []).slice(0, 3).map((item, idx) => (
+                            <div key={idx} className="d-flex align-items-center mb-2 p-2 bg-light rounded">
+                              {item.imagen_url ? (
+                                <img
+                                  src={item.imagen_url}
+                                  alt={item.nombre_producto || item.nombre}
+                                  style={{
+                                    width: '50px',
+                                    height: '50px',
+                                    objectFit: 'cover',
+                                    borderRadius: '8px',
+                                    marginRight: '10px'
+                                  }}
+                                />
+                              ) : (
+                                <div
+                                  className="bg-secondary rounded d-flex align-items-center justify-content-center me-2"
+                                  style={{ width: '50px', height: '50px' }}
+                                >
+                                  <i className="bi bi-image text-white"></i>
+                                </div>
+                              )}
+                              <div className="flex-grow-1">
+                                <div className="fw-bold small">
+                                  {item.nombre_producto || item.nombre}
+                                </div>
+                                <div className="text-muted small">
+                                  Cantidad: {item.cantidad}
+                                </div>
+                              </div>
                             </div>
                           ))}
-                          {pedido.items?.length > 2 && (
+                          {(pedido.items || pedido.detalles || []).length > 3 && (
                             <small className="text-muted">
-                              +{pedido.items.length - 2} más...
+                              +{(pedido.items || pedido.detalles || []).length - 3} más...
                             </small>
                           )}
                         </div>
@@ -260,19 +366,32 @@ const PedidosScreen = () => {
                         <div className="d-grid gap-2">
                           <Button
                             variant="success"
-                            onClick={() => handleCambiarEstado(pedido.id, 'COMPLETADO')}
+                            onClick={() => handleCambiarEstado(pedido.id_venta, 'COMPLETADA')}
+                            disabled={procesando}
                           >
                             <i className="bi bi-check-circle me-2"></i>
                             Marcar Completado
                           </Button>
-                          <Button
-                            variant="outline-secondary"
-                            size="sm"
-                            onClick={() => handleVerDetalle(pedido)}
-                          >
-                            <i className="bi bi-eye me-1"></i>
-                            Ver Detalle
-                          </Button>
+                          <div className="d-flex gap-2">
+                            <Button
+                              variant="outline-info"
+                              size="sm"
+                              className="flex-grow-1"
+                              onClick={() => handleVerDetalle(pedido)}
+                            >
+                              <i className="bi bi-eye me-1"></i>
+                              Ver Detalle
+                            </Button>
+                            <Button
+                              variant="outline-danger"
+                              size="sm"
+                              onClick={() => handleCancelar(pedido.id_venta)}
+                              disabled={procesando}
+                            >
+                              <i className="bi bi-x-circle me-1"></i>
+                              Cancelar
+                            </Button>
+                          </div>
                         </div>
                       </Card.Body>
                     </Card>
@@ -284,16 +403,110 @@ const PedidosScreen = () => {
         </Col>
       </Row>
 
-      {/* Modal de detalle */}
-      <DetalleVentaModal
-        show={showModal}
-        onHide={() => setShowModal(false)}
-        venta={pedidoSeleccionado}
-        onEstadoChange={() => {
-          loadPedidos();
-          setShowModal(false);
-        }}
-      />
+      {/* Modal de Detalle */}
+      <Modal show={showDetalleModal} onHide={() => setShowDetalleModal(false)} size="lg" centered>
+        <Modal.Header closeButton className="bg-primary text-white">
+          <Modal.Title>
+            <i className="bi bi-receipt me-2"></i>
+            Detalle del Pedido #{pedidoSeleccionado?.numero_factura || pedidoSeleccionado?.id_venta}
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {pedidoSeleccionado && (
+            <>
+              <Row className="mb-4">
+                <Col md={6}>
+                  <div className="mb-3">
+                    <small className="text-muted d-block">Fecha y Hora</small>
+                    <strong>{formatDateTime(pedidoSeleccionado.fecha_venta || pedidoSeleccionado.created_at)}</strong>
+                  </div>
+                  <div className="mb-3">
+                    <small className="text-muted d-block">Estado</small>
+                    <Badge bg={pedidoSeleccionado.estado_venta === 'PENDIENTE' ? 'warning' : 'info'} className="fs-6">
+                      {pedidoSeleccionado.estado_venta}
+                    </Badge>
+                  </div>
+                </Col>
+                <Col md={6}>
+                  <div className="mb-3">
+                    <small className="text-muted d-block">Moneda</small>
+                    <strong>{pedidoSeleccionado.codigo_moneda || 'USD'}</strong>
+                  </div>
+                  <div className="mb-3">
+                    <small className="text-muted d-block">Total</small>
+                    <h4 className="text-success mb-0">
+                      {formatCurrency(pedidoSeleccionado.total || pedidoSeleccionado.monto_total, pedidoSeleccionado.codigo_moneda || 'USD')}
+                    </h4>
+                  </div>
+                </Col>
+              </Row>
+
+              <h6 className="border-bottom pb-2 mb-3">
+                <i className="bi bi-basket me-2"></i>
+                Productos del Pedido
+              </h6>
+
+              <div className="mb-3">
+                {(pedidoSeleccionado.items || pedidoSeleccionado.detalles || []).map((item, idx) => (
+                  <Card key={idx} className="mb-2">
+                    <Card.Body className="p-3">
+                      <Row className="align-items-center">
+                        <Col xs={3} md={2}>
+                          {item.imagen_url ? (
+                            <img
+                              src={item.imagen_url}
+                              alt={item.nombre_producto || item.nombre}
+                              className="img-fluid rounded"
+                              style={{ maxHeight: '80px', objectFit: 'cover' }}
+                            />
+                          ) : (
+                            <div
+                              className="bg-light rounded d-flex align-items-center justify-content-center"
+                              style={{ height: '80px' }}
+                            >
+                              <i className="bi bi-image text-muted" style={{ fontSize: '2rem' }}></i>
+                            </div>
+                          )}
+                        </Col>
+                        <Col xs={9} md={10}>
+                          <div className="d-flex justify-content-between align-items-start">
+                            <div>
+                              <strong className="d-block">{item.nombre_producto || item.nombre}</strong>
+                              <small className="text-muted">
+                                {formatCurrency(item.precio_unitario || item.precio, pedidoSeleccionado.codigo_moneda || 'USD')} x {item.cantidad}
+                              </small>
+                              {item.toppings && item.toppings.length > 0 && (
+                                <div className="mt-1">
+                                  {item.toppings.map((topping, tIdx) => (
+                                    <Badge key={tIdx} bg="secondary" className="me-1">
+                                      + {topping.nombre_topping || topping.nombre}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            <strong className="text-primary">
+                              {formatCurrency(
+                                (parseFloat(item.precio_unitario || item.precio) * parseInt(item.cantidad)),
+                                pedidoSeleccionado.codigo_moneda || 'USD'
+                              )}
+                            </strong>
+                          </div>
+                        </Col>
+                      </Row>
+                    </Card.Body>
+                  </Card>
+                ))}
+              </div>
+            </>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowDetalleModal(false)}>
+            Cerrar
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </div>
   );
 };

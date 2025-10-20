@@ -72,20 +72,35 @@ const DetalleVentaModal = ({ show, onHide, ventaId, onStatusChange }) => {
     return precioBase + precioToppings;
   };
 
+  // Función para obtener el código de moneda correcto
+  const getCodigoMoneda = () => {
+    // Priorizar codigo_moneda, luego id_moneda, luego moneda, por defecto USD
+    return venta?.codigo_moneda || venta?.moneda || 'USD';
+  };
+
   if (!show) return null;
+
+  const codigoMoneda = venta ? getCodigoMoneda() : 'USD';
 
   return (
     <Modal show={show} onHide={handleClose} size="lg" centered>
-      <Modal.Header closeButton className="bg-primary text-white">
+      <Modal.Header 
+        closeButton 
+        style={{ 
+          background: 'linear-gradient(135deg, #8B4FB8 0%, #9D5BC4 100%)',
+          color: 'white',
+          borderBottom: 'none'
+        }}
+      >
         <Modal.Title>
           <i className="bi bi-receipt me-2"></i>
           Detalle de Venta #{ventaId}
         </Modal.Title>
       </Modal.Header>
-      <Modal.Body>
+      <Modal.Body className="p-4">
         {loading ? (
           <div className="text-center py-5">
-            <Spinner animation="border" variant="primary" />
+            <Spinner animation="border" style={{ color: '#8B4FB8' }} />
             <p className="mt-3 text-muted">Cargando detalle...</p>
           </div>
         ) : venta ? (
@@ -94,11 +109,11 @@ const DetalleVentaModal = ({ show, onHide, ventaId, onStatusChange }) => {
             <Row className="mb-4">
               <Col md={6}>
                 <div className="mb-3">
-                  <small className="text-muted d-block">Fecha y Hora</small>
+                  <small className="text-muted d-block mb-1">Fecha y Hora</small>
                   <strong>{formatDateTime(venta.fecha_venta || venta.created_at)}</strong>
                 </div>
                 <div className="mb-3">
-                  <small className="text-muted d-block">Estado</small>
+                  <small className="text-muted d-block mb-1">Estado</small>
                   <Badge bg={getEstadoBadge(venta.estado_venta).bg} className="fs-6">
                     {getEstadoBadge(venta.estado_venta).text}
                   </Badge>
@@ -106,11 +121,24 @@ const DetalleVentaModal = ({ show, onHide, ventaId, onStatusChange }) => {
               </Col>
               <Col md={6}>
                 <div className="mb-3">
-                  <small className="text-muted d-block">Moneda</small>
-                  <strong>{venta.codigo_moneda || venta.moneda || 'USD'}</strong>
+                  <small className="text-muted d-block mb-1">Moneda de Pago</small>
+                  <Badge 
+                    bg="light" 
+                    text="dark"
+                    className="fs-6"
+                    style={{ 
+                      border: '2px solid rgba(139, 79, 184, 0.3)',
+                      fontWeight: '600'
+                    }}
+                  >
+                    {codigoMoneda === 'USD' && '💵 Dólares (USD)'}
+                    {codigoMoneda === 'VES' && '💰 Bolívares (VES)'}
+                    {codigoMoneda === 'COP' && '💵 Pesos (COP)'}
+                    {!['USD', 'VES', 'COP'].includes(codigoMoneda) && codigoMoneda}
+                  </Badge>
                 </div>
                 <div className="mb-3">
-                  <small className="text-muted d-block">Atendido por</small>
+                  <small className="text-muted d-block mb-1">Atendido por</small>
                   <strong>{venta.usuario?.nombre || venta.nombre_usuario || 'N/A'}</strong>
                 </div>
               </Col>
@@ -118,56 +146,75 @@ const DetalleVentaModal = ({ show, onHide, ventaId, onStatusChange }) => {
 
             {/* Items de la Venta */}
             <div className="mb-4">
-              <h6 className="border-bottom pb-2 mb-3">
+              <h6 
+                className="pb-2 mb-3"
+                style={{ 
+                  borderBottom: '2px solid rgba(139, 79, 184, 0.2)',
+                  color: '#8B4FB8',
+                  fontWeight: '600'
+                }}
+              >
                 <i className="bi bi-basket me-2"></i>
                 Productos
               </h6>
               <ListGroup variant="flush">
                 {(venta.items || venta.detalles || []).map((item, index) => (
-                  <ListGroup.Item key={index} className="px-0">
+                  <ListGroup.Item key={index} className="px-0 py-3">
                     <Row className="align-items-start">
-                      <Col md={2}>
+                      <Col xs={3} md={2}>
                         {item.imagen_url || item.imagenUrl ? (
                           <img
                             src={item.imagen_url || item.imagenUrl}
                             alt={item.nombre_producto || item.nombre}
-                            className="img-fluid rounded"
+                            className="img-fluid rounded shadow-sm"
                             style={{ maxHeight: '60px', objectFit: 'cover' }}
                           />
                         ) : (
                           <div
-                            className="bg-light rounded d-flex align-items-center justify-content-center"
+                            className="bg-light rounded d-flex align-items-center justify-content-center shadow-sm"
                             style={{ height: '60px' }}
                           >
                             <i className="bi bi-image text-muted"></i>
                           </div>
                         )}
                       </Col>
-                      <Col md={10}>
-                        <div className="d-flex justify-content-between align-items-start">
-                          <div>
-                            <strong className="d-block">
+                      <Col xs={9} md={10}>
+                        <div className="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                          <div className="flex-grow-1">
+                            <strong className="d-block mb-1">
                               {item.nombre_producto || item.nombre}
                             </strong>
-                            <small className="text-muted">
-                              {formatCurrency(item.precio_unitario || item.precio, venta.codigo_moneda || 'USD')} x {item.cantidad}
+                            <small className="text-muted d-block">
+                              {formatCurrency(item.precio_unitario || item.precio, codigoMoneda)} 
+                              <span className="mx-1">×</span> 
+                              {item.cantidad}
                             </small>
                             
                             {/* Toppings */}
                             {item.toppings && item.toppings.length > 0 && (
-                              <div className="mt-1">
+                              <div className="mt-2">
+                                <small className="text-muted d-block mb-1">Toppings:</small>
                                 {item.toppings.map((topping, idx) => (
-                                  <Badge key={idx} bg="secondary" className="me-1">
-                                    + {topping.nombre_topping || topping.nombre} 
-                                    ({formatCurrency(topping.precio, venta.codigo_moneda || 'USD')})
+                                  <Badge 
+                                    key={idx} 
+                                    bg="light" 
+                                    text="dark" 
+                                    className="me-1 mb-1"
+                                    style={{ border: '1px solid #dee2e6' }}
+                                  >
+                                    <i className="bi bi-plus-circle me-1"></i>
+                                    {topping.nombre_topping || topping.nombre} 
+                                    <span className="ms-1">
+                                      ({formatCurrency(topping.precio, codigoMoneda)})
+                                    </span>
                                   </Badge>
                                 ))}
                               </div>
                             )}
                           </div>
                           <div className="text-end">
-                            <strong className="text-primary">
-                              {formatCurrency(calcularSubtotal(item), venta.codigo_moneda || 'USD')}
+                            <strong style={{ color: '#8B4FB8', fontSize: '1.1rem' }}>
+                              {formatCurrency(calcularSubtotal(item), codigoMoneda)}
                             </strong>
                           </div>
                         </div>
@@ -179,22 +226,42 @@ const DetalleVentaModal = ({ show, onHide, ventaId, onStatusChange }) => {
             </div>
 
             {/* Total */}
-            <div className="border-top pt-3">
-              <Row>
-                <Col md={6}>
-                  {venta.codigo_moneda !== 'USD' && venta.total_usd && (
-                    <div className="text-muted small">
-                      <i className="bi bi-info-circle me-1"></i>
-                      Equivalente: {formatCurrency(venta.total_usd, 'USD')}
+            <div 
+              className="pt-3 mt-3"
+              style={{ borderTop: '2px solid rgba(139, 79, 184, 0.2)' }}
+            >
+              <Row className="align-items-center">
+                <Col xs={12} md={6} className="mb-3 mb-md-0">
+                  {codigoMoneda !== 'USD' && venta.total_usd && (
+                    <div 
+                      className="p-3 rounded"
+                      style={{ 
+                        background: 'rgba(139, 79, 184, 0.05)',
+                        border: '1px solid rgba(139, 79, 184, 0.1)'
+                      }}
+                    >
+                      <small className="text-muted d-block mb-1">
+                        <i className="bi bi-currency-exchange me-1"></i>
+                        Equivalente en USD:
+                      </small>
+                      <strong style={{ color: '#8B4FB8' }}>
+                        {formatCurrency(venta.total_usd, 'USD')}
+                      </strong>
                     </div>
                   )}
                 </Col>
-                <Col md={6}>
+                <Col xs={12} md={6}>
                   <div className="d-flex justify-content-between align-items-center">
                     <h5 className="mb-0">Total:</h5>
-                    <h4 className="mb-0 text-success">
-                      {formatCurrency(venta.total || venta.monto_total, venta.codigo_moneda || 'USD')}
-                    </h4>
+                    <h3 
+                      className="mb-0" 
+                      style={{ 
+                        color: '#28a745',
+                        fontWeight: '700'
+                      }}
+                    >
+                      {formatCurrency(venta.total || venta.monto_total, codigoMoneda)}
+                    </h3>
                   </div>
                 </Col>
               </Row>
@@ -202,21 +269,32 @@ const DetalleVentaModal = ({ show, onHide, ventaId, onStatusChange }) => {
 
             {/* Acciones de Estado */}
             {venta.estado_venta === 'PENDIENTE' && (
-              <Alert variant="info" className="mt-4 mb-0">
-                <div className="d-flex justify-content-between align-items-center flex-wrap">
-                  <div className="mb-2 mb-md-0">
-                    <i className="bi bi-info-circle me-2"></i>
+              <Alert 
+                variant="light"
+                className="mt-4 mb-0"
+                style={{ 
+                  border: '2px solid rgba(139, 79, 184, 0.2)',
+                  background: 'rgba(139, 79, 184, 0.05)'
+                }}
+              >
+                <div className="d-flex justify-content-between align-items-center flex-wrap gap-3">
+                  <div>
+                    <i className="bi bi-info-circle me-2" style={{ color: '#8B4FB8' }}></i>
                     <strong>¿Deseas cambiar el estado de esta venta?</strong>
                   </div>
-                  <div>
+                  <div className="d-flex gap-2">
                     <Button
                       variant="success"
                       size="sm"
-                      className="me-2"
                       onClick={() => cambiarEstado('COMPLETADA')}
                       disabled={procesando}
+                      style={{ fontWeight: '500' }}
                     >
-                      <i className="bi bi-check-circle me-1"></i>
+                      {procesando ? (
+                        <Spinner animation="border" size="sm" className="me-1" />
+                      ) : (
+                        <i className="bi bi-check-circle me-1"></i>
+                      )}
                       Completar
                     </Button>
                     <Button
@@ -224,6 +302,7 @@ const DetalleVentaModal = ({ show, onHide, ventaId, onStatusChange }) => {
                       size="sm"
                       onClick={() => cambiarEstado('CANCELADA')}
                       disabled={procesando}
+                      style={{ fontWeight: '500' }}
                     >
                       <i className="bi bi-x-circle me-1"></i>
                       Cancelar
@@ -234,11 +313,19 @@ const DetalleVentaModal = ({ show, onHide, ventaId, onStatusChange }) => {
             )}
           </>
         ) : (
-          <Alert variant="warning">No se pudo cargar la información de la venta</Alert>
+          <Alert variant="warning">
+            <i className="bi bi-exclamation-triangle me-2"></i>
+            No se pudo cargar la información de la venta
+          </Alert>
         )}
       </Modal.Body>
       <Modal.Footer>
-        <Button variant="secondary" onClick={handleClose}>
+        <Button 
+          variant="secondary" 
+          onClick={handleClose}
+          style={{ fontWeight: '500' }}
+        >
+          <i className="bi bi-x-lg me-2"></i>
           Cerrar
         </Button>
       </Modal.Footer>

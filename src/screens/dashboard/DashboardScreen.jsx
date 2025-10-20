@@ -35,6 +35,13 @@ const DashboardScreen = () => {
     }
   };
 
+  // Función para obtener ventas por moneda específica
+  const getVentasMoneda = (codigo) => {
+    if (!dashboardData?.ventas_por_moneda) return { total_moneda: 0, total_ventas: 0 };
+    const venta = dashboardData.ventas_por_moneda.find(v => v.codigo_moneda === codigo);
+    return venta || { total_moneda: 0, total_ventas: 0 };
+  };
+
   if (loading) {
     return (
       <div className="d-flex flex-column justify-content-center align-items-center" style={{ minHeight: '400px' }}>
@@ -67,6 +74,10 @@ const DashboardScreen = () => {
       </div>
     );
   }
+
+  const ventasUSD = getVentasMoneda('USD');
+  const ventasVES = getVentasMoneda('VES');
+  const ventasCOP = getVentasMoneda('COP');
 
   return (
     <div>
@@ -101,7 +112,7 @@ const DashboardScreen = () => {
             className="border-0 shadow-sm position-relative overflow-hidden"
             style={{
               borderRadius: '16px',
-              background: estadoCaja?.abierta 
+              background: estadoCaja?.abierta || estadoCaja?.estado === 'ABIERTA'
                 ? 'linear-gradient(135deg, #28a745 0%, #20c997 100%)'
                 : 'linear-gradient(135deg, #dc3545 0%, #c82333 100%)'
             }}
@@ -111,13 +122,13 @@ const DashboardScreen = () => {
                 <div className="text-white">
                   <div className="d-flex align-items-center mb-2">
                     <i 
-                      className={`bi ${estadoCaja?.abierta ? 'bi-cash-stack' : 'bi-lock'} me-2`}
+                      className={`bi ${(estadoCaja?.abierta || estadoCaja?.estado === 'ABIERTA') ? 'bi-cash-stack' : 'bi-lock'} me-2`}
                       style={{ fontSize: 'clamp(1.5rem, 4vw, 2rem)' }}
                     ></i>
                     <h4 className="fw-bold mb-0" style={{ fontSize: 'clamp(1.1rem, 3vw, 1.5rem)' }}>Estado de Caja</h4>
                   </div>
                   <p className="mb-0 opacity-75 small">
-                    {estadoCaja?.abierta ? 'Operaciones activas' : 'Sin operaciones'}
+                    {(estadoCaja?.abierta || estadoCaja?.estado === 'ABIERTA') ? 'Operaciones activas' : 'Sin operaciones'}
                   </p>
                 </div>
                 <Badge 
@@ -126,10 +137,10 @@ const DashboardScreen = () => {
                   style={{
                     fontSize: 'clamp(0.9rem, 2.5vw, 1.1rem)',
                     fontWeight: '700',
-                    color: estadoCaja?.abierta ? '#28a745' : '#dc3545'
+                    color: (estadoCaja?.abierta || estadoCaja?.estado === 'ABIERTA') ? '#28a745' : '#dc3545'
                   }}
                 >
-                  {estadoCaja?.abierta ? 'ABIERTA' : 'CERRADA'}
+                  {(estadoCaja?.abierta || estadoCaja?.estado === 'ABIERTA') ? 'ABIERTA' : 'CERRADA'}
                 </Badge>
               </div>
             </Card.Body>
@@ -137,14 +148,15 @@ const DashboardScreen = () => {
         </Col>
       </Row>
 
-      {/* Tarjetas de estadísticas */}
+      {/* Tarjetas de ventas por moneda */}
       <Row className="mb-4 g-3 g-md-4">
-        <Col xs={12} sm={6} lg={3}>
+        {/* Ventas USD */}
+        <Col xs={12} sm={6} lg={4}>
           <Card 
             className="border-0 shadow-sm h-100 position-relative overflow-hidden"
             style={{
               borderRadius: '16px',
-              background: 'linear-gradient(135deg, #8B4FB8 0%, #9D5BC4 100%)'
+              background: 'linear-gradient(135deg, #28a745 0%, #20c997 100%)'
             }}
           >
             <Card.Body className="p-3 p-md-4 text-white">
@@ -157,14 +169,117 @@ const DashboardScreen = () => {
                     backdropFilter: 'blur(10px)'
                   }}
                 >
-                  <i className="bi bi-cart-check" style={{ fontSize: 'clamp(1.3rem, 3vw, 1.8rem)' }}></i>
+                  <i className="bi bi-currency-dollar" style={{ fontSize: 'clamp(1.3rem, 3vw, 1.8rem)' }}></i>
                 </div>
               </div>
               <p className="mb-1 opacity-75 small" style={{ fontWeight: '500' }}>
-                Ventas Hoy
+                Ventas en Dólares
               </p>
               <h2 className="fw-bold mb-0" style={{ fontSize: 'clamp(1.3rem, 4vw, 2rem)' }}>
-                {formatCurrency(dashboardData?.ventasHoy || dashboardData?.resumen_ventas?.total_usd || 0, 'USD')}
+                {formatCurrency(ventasUSD.total_moneda, 'USD')}
+              </h2>
+              <small className="opacity-75 mt-2 d-block">
+                {ventasUSD.total_ventas} {ventasUSD.total_ventas === 1 ? 'venta' : 'ventas'}
+              </small>
+            </Card.Body>
+          </Card>
+        </Col>
+
+        {/* Ventas VES */}
+        <Col xs={12} sm={6} lg={4}>
+          <Card 
+            className="border-0 shadow-sm h-100 position-relative overflow-hidden"
+            style={{
+              borderRadius: '16px',
+              background: 'linear-gradient(135deg, #17a2b8 0%, #138496 100%)'
+            }}
+          >
+            <Card.Body className="p-3 p-md-4 text-white">
+              <div className="d-flex justify-content-between align-items-start mb-2 mb-md-3">
+                <div 
+                  style={{ 
+                    background: 'rgba(255, 255, 255, 0.2)', 
+                    padding: '12px', 
+                    borderRadius: '12px',
+                    backdropFilter: 'blur(10px)'
+                  }}
+                >
+                  <i className="bi bi-cash-coin" style={{ fontSize: 'clamp(1.3rem, 3vw, 1.8rem)' }}></i>
+                </div>
+              </div>
+              <p className="mb-1 opacity-75 small" style={{ fontWeight: '500' }}>
+                Ventas en Bolívares
+              </p>
+              <h2 className="fw-bold mb-0" style={{ fontSize: 'clamp(1.3rem, 4vw, 2rem)' }}>
+                {formatCurrency(ventasVES.total_moneda, 'VES')}
+              </h2>
+              <small className="opacity-75 mt-2 d-block">
+                {ventasVES.total_ventas} {ventasVES.total_ventas === 1 ? 'venta' : 'ventas'}
+              </small>
+            </Card.Body>
+          </Card>
+        </Col>
+
+        {/* Ventas COP */}
+        <Col xs={12} sm={6} lg={4}>
+          <Card 
+            className="border-0 shadow-sm h-100 position-relative overflow-hidden"
+            style={{
+              borderRadius: '16px',
+              background: 'linear-gradient(135deg, #ffc107 0%, #e0a800 100%)'
+            }}
+          >
+            <Card.Body className="p-3 p-md-4 text-white">
+              <div className="d-flex justify-content-between align-items-start mb-2 mb-md-3">
+                <div 
+                  style={{ 
+                    background: 'rgba(255, 255, 255, 0.2)', 
+                    padding: '12px', 
+                    borderRadius: '12px',
+                    backdropFilter: 'blur(10px)'
+                  }}
+                >
+                  <i className="bi bi-cash" style={{ fontSize: 'clamp(1.3rem, 3vw, 1.8rem)' }}></i>
+                </div>
+              </div>
+              <p className="mb-1 opacity-75 small" style={{ fontWeight: '500' }}>
+                Ventas en Pesos
+              </p>
+              <h2 className="fw-bold mb-0" style={{ fontSize: 'clamp(1.3rem, 4vw, 2rem)' }}>
+                {formatCurrency(ventasCOP.total_moneda, 'COP')}
+              </h2>
+              <small className="opacity-75 mt-2 d-block">
+                {ventasCOP.total_ventas} {ventasCOP.total_ventas === 1 ? 'venta' : 'ventas'}
+              </small>
+            </Card.Body>
+          </Card>
+        </Col>
+      </Row>
+
+      {/* Tarjetas de estadísticas generales */}
+      <Row className="mb-4 g-3 g-md-4">
+        <Col xs={12} sm={6} lg={3}>
+          <Card 
+            className="border-0 shadow-sm h-100"
+            style={{ borderRadius: '16px' }}
+          >
+            <Card.Body className="p-3 p-md-4">
+              <div className="d-flex justify-content-between align-items-start mb-2 mb-md-3">
+                <div 
+                  style={{ 
+                    background: 'rgba(139, 79, 184, 0.1)', 
+                    padding: '12px', 
+                    borderRadius: '12px' 
+                  }}
+                >
+                  <i className="bi bi-bag-check" style={{ fontSize: 'clamp(1.3rem, 3vw, 1.8rem)', color: '#8B4FB8' }}></i>
+                </div>
+              </div>
+              <p className="text-muted mb-1 small" style={{ fontWeight: '500' }}>
+                Total Pedidos Hoy
+              </p>
+              <h2 className="fw-bold mb-0" style={{ color: '#8B4FB8', fontSize: 'clamp(1.3rem, 4vw, 2rem)' }}>
+                {dashboardData?.resumen_ventas?.total_ventas || 0}
               </h2>
             </Card.Body>
           </Card>
@@ -184,14 +299,14 @@ const DashboardScreen = () => {
                     borderRadius: '12px' 
                   }}
                 >
-                  <i className="bi bi-bag-check" style={{ fontSize: 'clamp(1.3rem, 3vw, 1.8rem)', color: '#8B4FB8' }}></i>
+                  <i className="bi bi-currency-exchange" style={{ fontSize: 'clamp(1.3rem, 3vw, 1.8rem)', color: '#8B4FB8' }}></i>
                 </div>
               </div>
               <p className="text-muted mb-1 small" style={{ fontWeight: '500' }}>
-                Pedidos Hoy
+                Total en USD
               </p>
               <h2 className="fw-bold mb-0" style={{ color: '#8B4FB8', fontSize: 'clamp(1.3rem, 4vw, 2rem)' }}>
-                {dashboardData?.pedidosHoy || dashboardData?.resumen_ventas?.total_ventas || 0}
+                {formatCurrency(dashboardData?.resumen_ventas?.total_usd || 0, 'USD')}
               </h2>
             </Card.Body>
           </Card>
@@ -218,7 +333,7 @@ const DashboardScreen = () => {
                 Productos
               </p>
               <h2 className="fw-bold mb-0" style={{ color: '#28a745', fontSize: 'clamp(1.3rem, 4vw, 2rem)' }}>
-                {dashboardData?.totalProductos || 0}
+                {dashboardData?.total_productos || 0}
               </h2>
             </Card.Body>
           </Card>
@@ -245,7 +360,7 @@ const DashboardScreen = () => {
                 Toppings
               </p>
               <h2 className="fw-bold mb-0" style={{ color: '#ffc107', fontSize: 'clamp(1.3rem, 4vw, 2rem)' }}>
-                {dashboardData?.totalToppings || 0}
+                {dashboardData?.total_toppings || 0}
               </h2>
             </Card.Body>
           </Card>
@@ -253,7 +368,7 @@ const DashboardScreen = () => {
       </Row>
 
       {/* Productos con stock bajo */}
-      {(dashboardData?.productosStockBajo || dashboardData?.inventario_bajo)?.length > 0 && (
+      {(dashboardData?.inventario_bajo)?.length > 0 && (
         <Row className="mb-4">
           <Col xs={12}>
             <Card 
@@ -297,18 +412,18 @@ const DashboardScreen = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {(dashboardData?.productosStockBajo || dashboardData?.inventario_bajo || []).map((producto, index) => (
-                        <tr key={producto.id || index}>
+                      {(dashboardData?.inventario_bajo || []).map((producto, index) => (
+                        <tr key={index}>
                           <td style={{ padding: '12px', fontWeight: '500', fontSize: 'clamp(0.85rem, 2vw, 1rem)' }}>
-                            {producto.nombre || producto.nombre_topping || producto.nombre_materia}
+                            {producto.nombre_topping}
                           </td>
                           <td style={{ padding: '12px' }}>
                             <Badge bg="danger" className="px-2 px-md-3 py-1 py-md-2" style={{ fontSize: 'clamp(0.75rem, 1.8vw, 0.9rem)' }}>
-                              {producto.stock || producto.stock_actual || producto.cantidad_actual}
+                              {producto.stock_actual}
                             </Badge>
                           </td>
                           <td className="d-none d-sm-table-cell" style={{ padding: '12px', color: '#6c757d', fontSize: 'clamp(0.85rem, 2vw, 1rem)' }}>
-                            {producto.stockMinimo || producto.stock_minimo || producto.cantidad_minima}
+                            {producto.stock_minimo}
                           </td>
                         </tr>
                       ))}
@@ -321,8 +436,8 @@ const DashboardScreen = () => {
         </Row>
       )}
 
-      {/* Productos más vendidos */}
-      {(dashboardData?.topProductos || dashboardData?.productos_mas_vendidos)?.length > 0 && (
+      {/* Productos más vendidos y Toppings */}
+      {(dashboardData?.productos_mas_vendidos || dashboardData?.toppings_mas_usados) && (
         <Row className="g-3 g-md-4">
           <Col xs={12} lg={6}>
             <Card 
@@ -363,42 +478,50 @@ const DashboardScreen = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {(dashboardData?.topProductos || dashboardData?.productos_mas_vendidos || []).slice(0, 5).map((producto, index) => (
-                        <tr key={producto.id || index}>
-                          <td style={{ padding: '12px' }}>
-                            <div
-                              style={{
-                                background: index < 3 ? 'linear-gradient(135deg, #8B4FB8 0%, #9D5BC4 100%)' : 'rgba(139, 79, 184, 0.1)',
-                                color: index < 3 ? '#fff' : '#8B4FB8',
-                                width: '28px',
-                                height: '28px',
-                                borderRadius: '50%',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontWeight: '700',
-                                fontSize: '0.85rem'
-                              }}
-                            >
-                              {index + 1}
-                            </div>
-                          </td>
-                          <td style={{ padding: '12px', fontWeight: '500', fontSize: 'clamp(0.85rem, 2vw, 1rem)' }}>
-                            {producto.nombre || producto.nombre_producto}
-                          </td>
-                          <td style={{ padding: '12px', textAlign: 'right' }}>
-                            <Badge 
-                              style={{
-                                background: 'linear-gradient(135deg, #8B4FB8 0%, #9D5BC4 100%)',
-                                padding: '6px 12px',
-                                fontSize: 'clamp(0.75rem, 1.8vw, 0.9rem)'
-                              }}
-                            >
-                              {producto.totalVendidos || producto.cantidad}
-                            </Badge>
+                      {(dashboardData?.productos_mas_vendidos || []).length === 0 ? (
+                        <tr>
+                          <td colSpan="3" className="text-center py-4 text-muted">
+                            No hay productos vendidos hoy
                           </td>
                         </tr>
-                      ))}
+                      ) : (
+                        (dashboardData?.productos_mas_vendidos || []).map((producto, index) => (
+                          <tr key={index}>
+                            <td style={{ padding: '12px' }}>
+                              <div
+                                style={{
+                                  background: index < 3 ? 'linear-gradient(135deg, #8B4FB8 0%, #9D5BC4 100%)' : 'rgba(139, 79, 184, 0.1)',
+                                  color: index < 3 ? '#fff' : '#8B4FB8',
+                                  width: '28px',
+                                  height: '28px',
+                                  borderRadius: '50%',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontWeight: '700',
+                                  fontSize: '0.85rem'
+                                }}
+                              >
+                                {index + 1}
+                              </div>
+                            </td>
+                            <td style={{ padding: '12px', fontWeight: '500', fontSize: 'clamp(0.85rem, 2vw, 1rem)' }}>
+                              {producto.nombre_producto}
+                            </td>
+                            <td style={{ padding: '12px', textAlign: 'right' }}>
+                              <Badge 
+                                style={{
+                                  background: 'linear-gradient(135deg, #8B4FB8 0%, #9D5BC4 100%)',
+                                  padding: '6px 12px',
+                                  fontSize: 'clamp(0.75rem, 1.8vw, 0.9rem)'
+                                }}
+                              >
+                                {producto.cantidad}
+                              </Badge>
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -445,42 +568,50 @@ const DashboardScreen = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {(dashboardData?.topToppings || []).slice(0, 5).map((topping, index) => (
-                        <tr key={topping.id || index}>
-                          <td style={{ padding: '12px' }}>
-                            <div
-                              style={{
-                                background: index < 3 ? 'linear-gradient(135deg, #8B4FB8 0%, #9D5BC4 100%)' : 'rgba(139, 79, 184, 0.1)',
-                                color: index < 3 ? '#fff' : '#8B4FB8',
-                                width: '28px',
-                                height: '28px',
-                                borderRadius: '50%',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontWeight: '700',
-                                fontSize: '0.85rem'
-                              }}
-                            >
-                              {index + 1}
-                            </div>
-                          </td>
-                          <td style={{ padding: '12px', fontWeight: '500', fontSize: 'clamp(0.85rem, 2vw, 1rem)' }}>
-                            {topping.nombre || topping.nombre_topping}
-                          </td>
-                          <td style={{ padding: '12px', textAlign: 'right' }}>
-                            <Badge 
-                              style={{
-                                background: 'linear-gradient(135deg, #8B4FB8 0%, #9D5BC4 100%)',
-                                padding: '6px 12px',
-                                fontSize: 'clamp(0.75rem, 1.8vw, 0.9rem)'
-                              }}
-                            >
-                              {topping.totalUsados || topping.cantidad}
-                            </Badge>
+                      {(dashboardData?.toppings_mas_usados || []).length === 0 ? (
+                        <tr>
+                          <td colSpan="3" className="text-center py-4 text-muted">
+                            No hay toppings usados hoy
                           </td>
                         </tr>
-                      ))}
+                      ) : (
+                        (dashboardData?.toppings_mas_usados || []).map((topping, index) => (
+                          <tr key={index}>
+                            <td style={{ padding: '12px' }}>
+                              <div
+                                style={{
+                                  background: index < 3 ? 'linear-gradient(135deg, #8B4FB8 0%, #9D5BC4 100%)' : 'rgba(139, 79, 184, 0.1)',
+                                  color: index < 3 ? '#fff' : '#8B4FB8',
+                                  width: '28px',
+                                  height: '28px',
+                                  borderRadius: '50%',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontWeight: '700',
+                                  fontSize: '0.85rem'
+                                }}
+                              >
+                                {index + 1}
+                              </div>
+                            </td>
+                            <td style={{ padding: '12px', fontWeight: '500', fontSize: 'clamp(0.85rem, 2vw, 1rem)' }}>
+                              {topping.nombre_topping}
+                            </td>
+                            <td style={{ padding: '12px', textAlign: 'right' }}>
+                              <Badge 
+                                style={{
+                                  background: 'linear-gradient(135deg, #8B4FB8 0%, #9D5BC4 100%)',
+                                  padding: '6px 12px',
+                                  fontSize: 'clamp(0.75rem, 1.8vw, 0.9rem)'
+                                }}
+                              >
+                                {topping.cantidad}
+                              </Badge>
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
