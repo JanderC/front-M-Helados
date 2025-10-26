@@ -145,6 +145,13 @@ const DisplayScreen = () => {
                                 <i className="bi bi-clock me-2"></i>
                                 {formatDateTime(pedido.fecha_venta || pedido.created_at)}
                               </div>
+                              {/* Mostrar nombre del cliente (directo de tabla ventas) */}
+                              {pedido.nombre_cliente && (
+                                <div className="mt-2 text-muted">
+                                  <i className="bi bi-person me-2"></i>
+                                  <strong>{pedido.nombre_cliente}</strong>
+                                </div>
+                              )}
                             </div>
                             <Badge bg="warning" text="dark" className="display-estado-badge px-4 py-3">
                               PENDIENTE
@@ -229,6 +236,13 @@ const DisplayScreen = () => {
                                 <i className="bi bi-clock me-2"></i>
                                 {formatDateTime(pedido.fecha_venta || pedido.created_at)}
                               </div>
+                              {/* Mostrar nombre del cliente (directo de tabla ventas) */}
+                              {pedido.nombre_cliente && (
+                                <div className="mt-2 text-muted">
+                                  <i className="bi bi-person me-2"></i>
+                                  <strong>{pedido.nombre_cliente}</strong>
+                                </div>
+                              )}
                             </div>
                             <Badge bg="info" className="display-estado-badge px-4 py-3">
                               EN PROCESO

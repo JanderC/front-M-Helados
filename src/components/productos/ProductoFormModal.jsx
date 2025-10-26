@@ -9,7 +9,9 @@ const ProductoFormModal = ({ show, onHide, producto, onSaveSuccess, categorias }
     descripcion: '',
     id_categoria: '',
     precio_base: '',
+    precio_usd: '',
     costo_produccion: '',
+    costo_usd: '',
     imagen_url: ''
   });
   const [loading, setLoading] = useState(false);
@@ -30,7 +32,9 @@ const ProductoFormModal = ({ show, onHide, producto, onSaveSuccess, categorias }
         descripcion: producto.descripcion || '',
         id_categoria: producto.id_categoria || '',
         precio_base: producto.precio_base || '',
+        precio_usd: producto.precio_usd || '',
         costo_produccion: producto.costo_produccion || '',
+        costo_usd: producto.costo_usd || '',
         imagen_url: producto.imagen_url || ''
       });
       setImagePreview(producto.imagen_url || null);
@@ -56,7 +60,9 @@ const ProductoFormModal = ({ show, onHide, producto, onSaveSuccess, categorias }
       descripcion: '',
       id_categoria: '',
       precio_base: '',
+      precio_usd: '',
       costo_produccion: '',
+      costo_usd: '',
       imagen_url: ''
     });
     setErrors({});
@@ -146,11 +152,19 @@ const ProductoFormModal = ({ show, onHide, producto, onSaveSuccess, categorias }
     }
 
     if (!formData.precio_base || formData.precio_base <= 0) {
-      newErrors.precio_base = 'El precio debe ser mayor a 0';
+      newErrors.precio_base = 'El precio en pesos debe ser mayor a 0';
     }
 
-    if (!formData.costo_produccion || formData.costo_produccion < 0) {
+    if (!formData.precio_usd || formData.precio_usd <= 0) {
+      newErrors.precio_usd = 'El precio en USD debe ser mayor a 0';
+    }
+
+    if (formData.costo_produccion && formData.costo_produccion < 0) {
       newErrors.costo_produccion = 'El costo no puede ser negativo';
+    }
+
+    if (formData.costo_usd && formData.costo_usd < 0) {
+      newErrors.costo_usd = 'El costo en USD no puede ser negativo';
     }
 
     setErrors(newErrors);
@@ -172,7 +186,9 @@ const ProductoFormModal = ({ show, onHide, producto, onSaveSuccess, categorias }
         descripcion: formData.descripcion.trim(),
         id_categoria: parseInt(formData.id_categoria),
         precio_base: parseFloat(formData.precio_base),
-        costo_produccion: parseFloat(formData.costo_produccion),
+        precio_usd: parseFloat(formData.precio_usd),
+        costo_produccion: formData.costo_produccion ? parseFloat(formData.costo_produccion) : null,
+        costo_usd: formData.costo_usd ? parseFloat(formData.costo_usd) : null,
         imagen_url: formData.imagen_url || null
       };
 
@@ -264,45 +280,105 @@ const ProductoFormModal = ({ show, onHide, producto, onSaveSuccess, categorias }
             />
           </Form.Group>
 
-          <Row>
-            <Col md={6}>
-              <Form.Group className="mb-3">
-                <Form.Label>Precio Base (USD) *</Form.Label>
-                <Form.Control
-                  type="number"
-                  step="0.01"
-                  name="precio_base"
-                  value={formData.precio_base}
-                  onChange={handleChange}
-                  isInvalid={!!errors.precio_base}
-                  disabled={loading}
-                  placeholder="0.00"
-                />
-                <Form.Control.Feedback type="invalid">
-                  {errors.precio_base}
-                </Form.Control.Feedback>
-              </Form.Group>
-            </Col>
+          {/* Precios */}
+          <div className="border rounded p-3 mb-3 bg-light">
+            <h6 className="mb-3">
+              <i className="bi bi-cash-stack me-2"></i>
+              Precios
+            </h6>
+            <Row>
+              <Col md={6}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Precio en Pesos (COP) *</Form.Label>
+                  <Form.Control
+                    type="number"
+                    step="0.01"
+                    name="precio_base"
+                    value={formData.precio_base}
+                    onChange={handleChange}
+                    isInvalid={!!errors.precio_base}
+                    disabled={loading}
+                    placeholder="3500.00"
+                  />
+                  <Form.Text className="text-muted">
+                    Precio principal en pesos colombianos
+                  </Form.Text>
+                  <Form.Control.Feedback type="invalid">
+                    {errors.precio_base}
+                  </Form.Control.Feedback>
+                </Form.Group>
+              </Col>
 
-            <Col md={6}>
-              <Form.Group className="mb-3">
-                <Form.Label>Costo de Producción (USD) *</Form.Label>
-                <Form.Control
-                  type="number"
-                  step="0.01"
-                  name="costo_produccion"
-                  value={formData.costo_produccion}
-                  onChange={handleChange}
-                  isInvalid={!!errors.costo_produccion}
-                  disabled={loading}
-                  placeholder="0.00"
-                />
-                <Form.Control.Feedback type="invalid">
-                  {errors.costo_produccion}
-                </Form.Control.Feedback>
-              </Form.Group>
-            </Col>
-          </Row>
+              <Col md={6}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Precio Referencia (USD) *</Form.Label>
+                  <Form.Control
+                    type="number"
+                    step="0.01"
+                    name="precio_usd"
+                    value={formData.precio_usd}
+                    onChange={handleChange}
+                    isInvalid={!!errors.precio_usd}
+                    disabled={loading}
+                    placeholder="1.20"
+                  />
+                  <Form.Text className="text-muted">
+                    Usado para conversión a bolívares
+                  </Form.Text>
+                  <Form.Control.Feedback type="invalid">
+                    {errors.precio_usd}
+                  </Form.Control.Feedback>
+                </Form.Group>
+              </Col>
+            </Row>
+          </div>
+
+          {/* Costos */}
+          <div className="border rounded p-3 mb-3 bg-light">
+            <h6 className="mb-3">
+              <i className="bi bi-calculator me-2"></i>
+              Costos de Producción (Opcional)
+            </h6>
+            <Row>
+              <Col md={6}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Costo en Pesos (COP)</Form.Label>
+                  <Form.Control
+                    type="number"
+                    step="0.01"
+                    name="costo_produccion"
+                    value={formData.costo_produccion}
+                    onChange={handleChange}
+                    isInvalid={!!errors.costo_produccion}
+                    disabled={loading}
+                    placeholder="2000.00"
+                  />
+                  <Form.Control.Feedback type="invalid">
+                    {errors.costo_produccion}
+                  </Form.Control.Feedback>
+                </Form.Group>
+              </Col>
+
+              <Col md={6}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Costo Referencia (USD)</Form.Label>
+                  <Form.Control
+                    type="number"
+                    step="0.01"
+                    name="costo_usd"
+                    value={formData.costo_usd}
+                    onChange={handleChange}
+                    isInvalid={!!errors.costo_usd}
+                    disabled={loading}
+                    placeholder="0.70"
+                  />
+                  <Form.Control.Feedback type="invalid">
+                    {errors.costo_usd}
+                  </Form.Control.Feedback>
+                </Form.Group>
+              </Col>
+            </Row>
+          </div>
 
           {/* Sección de Imagen */}
           <Form.Group className="mb-3">

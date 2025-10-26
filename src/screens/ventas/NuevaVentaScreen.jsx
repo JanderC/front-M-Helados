@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Row, Col, Card, Button, Form, Badge, ListGroup, Alert, Table } from 'react-bootstrap';
+import { Row, Col, Card, Button, Form, Badge, ListGroup, Table, InputGroup } from 'react-bootstrap';
 import { productosService } from '../../api/services/productosService';
 import { toppingsService } from '../../api/services/toppingsService';
+import { saboresService } from '../../api/services/saboresService';
 import { ventasService } from '../../api/services/ventasService';
 import { monedasService } from '../../api/services/monedasService';
+import { clientesService } from '../../api/services/clientesService';
 import { toast } from 'react-toastify';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import DetalleVentaModal from '../../components/ventas/DetalleVentaModal';
@@ -11,10 +13,11 @@ import DetalleVentaModal from '../../components/ventas/DetalleVentaModal';
 const NuevaVentaScreen = () => {
   const [productos, setProductos] = useState([]);
   const [toppings, setToppings] = useState([]);
+  const [sabores, setSabores] = useState([]);
   const [tasas, setTasas] = useState({ USD: 1, VES: 36, COP: 4000 });
   const [monedas, setMonedas] = useState([]);
   const [carrito, setCarrito] = useState([]);
-  const [monedaSeleccionada, setMonedaSeleccionada] = useState('USD');
+  const [monedaSeleccionada, setMonedaSeleccionada] = useState('COP'); // Cambiado a COP por defecto
   const [loading, setLoading] = useState(true);
   const [procesando, setProcesando] = useState(false);
   const [filtroCategoria, setFiltroCategoria] = useState('');
@@ -22,17 +25,39 @@ const NuevaVentaScreen = () => {
   const [ventasRecientes, setVentasRecientes] = useState([]);
   const [showDetalleModal, setShowDetalleModal] = useState(false);
   const [ventaSeleccionada, setVentaSeleccionada] = useState(null);
+  
+  // Estados para cliente
+  const [nombreCliente, setNombreCliente] = useState('');
+  const [clientesEncontrados, setClientesEncontrados] = useState([]);
+  const [buscandoCliente, setBuscandoCliente] = useState(false);
+  const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
+  const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
 
   useEffect(() => {
     loadData();
   }, []);
 
+  // Buscar clientes mientras el usuario escribe
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (nombreCliente.length >= 2 && !clienteSeleccionado) {
+        buscarClientes(nombreCliente);
+      } else {
+        setClientesEncontrados([]);
+        setMostrarSugerencias(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [nombreCliente, clienteSeleccionado]);
+
   const loadData = async () => {
     try {
       setLoading(true);
-      const [prodResponse, toppResponse, tasasResponse, catResponse, ventasResponse] = await Promise.all([
+      const [prodResponse, toppResponse, saboresResponse, tasasResponse, catResponse, ventasResponse] = await Promise.all([
         productosService.getAll(),
         toppingsService.getAll(),
+        saboresService.getAll({ disponible: 'true' }),
         monedasService.getTasas(),
         productosService.getCategorias(),
         ventasService.getAll({ limit: 10 })
@@ -40,12 +65,11 @@ const NuevaVentaScreen = () => {
       
       setProductos(prodResponse.data?.data || prodResponse.data || []);
       setToppings(toppResponse.data?.data || toppResponse.data || []);
+      setSabores(saboresResponse.data?.data || saboresResponse.data || []);
       
-      // Guardar tanto las tasas como el array completo de monedas
       const monedasData = tasasResponse.data?.data || tasasResponse.data;
       if (Array.isArray(monedasData)) {
         setMonedas(monedasData);
-        // Convertir array a objeto de tasas para facilitar cálculos
         const tasasObj = {};
         monedasData.forEach(m => {
           tasasObj[m.codigo_moneda] = parseFloat(m.tasa_cambio_usd);
@@ -65,6 +89,34 @@ const NuevaVentaScreen = () => {
     }
   };
 
+  const buscarClientes = async (termino) => {
+    try {
+      setBuscandoCliente(true);
+      const response = await clientesService.search(termino);
+      const clientes = response.data?.data || response.data || [];
+      setClientesEncontrados(clientes);
+      setMostrarSugerencias(clientes.length > 0);
+    } catch (error) {
+      console.error('Error al buscar clientes:', error);
+    } finally {
+      setBuscandoCliente(false);
+    }
+  };
+
+  const seleccionarCliente = (cliente) => {
+    setClienteSeleccionado(cliente);
+    setNombreCliente(cliente.nombre_cliente);
+    setClientesEncontrados([]);
+    setMostrarSugerencias(false);
+  };
+
+  const limpiarCliente = () => {
+    setClienteSeleccionado(null);
+    setNombreCliente('');
+    setClientesEncontrados([]);
+    setMostrarSugerencias(false);
+  };
+
   const agregarAlCarrito = (producto) => {
     if (!producto.disponible) {
       toast.error('Producto no disponible');
@@ -72,7 +124,9 @@ const NuevaVentaScreen = () => {
     }
 
     const itemExistente = carrito.find(item => 
-      item.id_producto === producto.id_producto && item.toppings.length === 0
+      item.id_producto === producto.id_producto && 
+      item.toppings.length === 0 && 
+      item.sabores.length === 0
     );
 
     if (itemExistente) {
@@ -86,9 +140,11 @@ const NuevaVentaScreen = () => {
         id: Date.now(),
         id_producto: producto.id_producto,
         nombre: producto.nombre_producto,
-        precio: parseFloat(producto.precio_base),
+        precio_cop: parseFloat(producto.precio_base), // Precio en COP
+        precio_usd: parseFloat(producto.precio_usd || 0), // Precio en USD
         cantidad: 1,
         toppings: [],
+        sabores: [],
         imagenUrl: producto.imagen_url
       }]);
     }
@@ -115,6 +171,27 @@ const NuevaVentaScreen = () => {
     }));
   };
 
+  const agregarSabor = (itemId, sabor) => {
+    setCarrito(carrito.map(item => {
+      if (item.id === itemId) {
+        const saborYaAgregado = item.sabores.find(s => s.id_sabor === sabor.id_sabor);
+        if (saborYaAgregado) {
+          toast.warning('Este sabor ya fue agregado');
+          return item;
+        }
+        return {
+          ...item,
+          sabores: [...item.sabores, {
+            id_sabor: sabor.id_sabor,
+            nombre: sabor.nombre_sabor,
+            precio: parseFloat(sabor.precio_adicional || 0)
+          }]
+        };
+      }
+      return item;
+    }));
+  };
+
   const removerTopping = (itemId, toppingId) => {
     setCarrito(carrito.map(item => {
       if (item.id === itemId) {
@@ -127,14 +204,23 @@ const NuevaVentaScreen = () => {
     }));
   };
 
-  const actualizarCantidad = (itemId, cantidad) => {
-    if (cantidad <= 0) {
-      setCarrito(carrito.filter(item => item.id !== itemId));
-    } else {
-      setCarrito(carrito.map(item =>
-        item.id === itemId ? { ...item, cantidad } : item
-      ));
-    }
+  const removerSabor = (itemId, saborId) => {
+    setCarrito(carrito.map(item => {
+      if (item.id === itemId) {
+        return {
+          ...item,
+          sabores: item.sabores.filter(s => s.id_sabor !== saborId)
+        };
+      }
+      return item;
+    }));
+  };
+
+  const actualizarCantidad = (itemId, nuevaCantidad) => {
+    if (nuevaCantidad < 1) return;
+    setCarrito(carrito.map(item =>
+      item.id === itemId ? { ...item, cantidad: nuevaCantidad } : item
+    ));
   };
 
   const removerDelCarrito = (itemId) => {
@@ -142,71 +228,84 @@ const NuevaVentaScreen = () => {
   };
 
   const calcularSubtotal = (item) => {
-    const precioBase = item.precio * item.cantidad;
-    const precioToppings = item.toppings.reduce((sum, t) => sum + t.precio, 0) * item.cantidad;
-    return precioBase + precioToppings;
+    const precioBase = monedaSeleccionada === 'COP' ? item.precio_cop : item.precio_usd;
+    const precioToppings = item.toppings.reduce((sum, t) => sum + t.precio, 0);
+    const precioSabores = item.sabores.reduce((sum, s) => sum + s.precio, 0);
+    return (precioBase + precioToppings + precioSabores) * item.cantidad;
   };
 
-  const calcularTotal = () => {
-    return carrito.reduce((total, item) => total + calcularSubtotal(item), 0);
-  };
+  // Calcular total en COP
+  const totalCOP = carrito.reduce((total, item) => {
+    const precioBase = item.precio_cop;
+    const precioToppings = item.toppings.reduce((sum, t) => sum + t.precio, 0);
+    const precioSabores = item.sabores.reduce((sum, s) => sum + s.precio, 0);
+    return total + ((precioBase + precioToppings + precioSabores) * item.cantidad);
+  }, 0);
+
+  // Calcular total en USD (para conversión a VES)
+  const totalUSD = carrito.reduce((total, item) => {
+    const precioBase = item.precio_usd;
+    const precioToppings = item.toppings.reduce((sum, t) => sum + t.precio, 0);
+    const precioSabores = item.sabores.reduce((sum, s) => sum + s.precio, 0);
+    return total + ((precioBase + precioToppings + precioSabores) * item.cantidad);
+  }, 0);
+
+  // Calcular total en la moneda seleccionada
+  const totalMoneda = monedaSeleccionada === 'COP' 
+    ? totalCOP 
+    : monedaSeleccionada === 'USD'
+    ? totalUSD
+    : totalUSD * (tasas['VES'] || 1); // Para VES, usar el precio USD × tasa BCV
 
   const procesarVenta = async () => {
     if (carrito.length === 0) {
-      toast.error('El carrito está vacío');
+      toast.warning('El carrito está vacío');
       return;
     }
+
 
     try {
       setProcesando(true);
 
-      // Buscar el id_moneda correspondiente al código seleccionado
-      const monedaObj = monedas.find(m => m.codigo_moneda === monedaSeleccionada);
-      
-      if (!monedaObj) {
-        toast.error('Moneda no válida');
-        return;
-      }
-
-      // Estructura que el backend espera
-      const ventaData = {
-        productos: carrito.map(item => ({
-          id_producto: item.id_producto,
+      const detalles = carrito.map(item => ({
+        id_producto: item.id_producto,
+        cantidad: item.cantidad,
+        precio_unitario: monedaSeleccionada === 'COP' ? item.precio_cop : item.precio_usd,
+        toppings: item.toppings.map(t => ({
+          id_topping: t.id_topping,
           cantidad: item.cantidad,
-          precio_unitario: item.precio,
-          toppings: item.toppings.map(t => ({
-            id_topping: t.id_topping,
-            precio_unitario: t.precio
-          }))
+          precio_unitario: t.precio
         })),
-        id_moneda: monedaObj.id_moneda, // Usar el ID de la moneda
-        monto_total: calcularTotal()
+        sabores: item.sabores.map(s => ({
+          id_sabor: s.id_sabor
+        }))
+      }));
+
+      const ventaData = {
+        nombre_cliente: nombreCliente,
+        id_cliente: clienteSeleccionado?.id_cliente || null,
+        codigo_moneda: monedaSeleccionada,
+        tasa_cambio: tasas[monedaSeleccionada] || 1,
+        total: totalMoneda,
+        detalles
       };
 
-      console.log('Enviando venta:', ventaData);
-      const response = await ventasService.create(ventaData);
-      console.log('Respuesta:', response.data);
+      await ventasService.create(ventaData);
       
-      toast.success('¡Venta procesada exitosamente!');
+      toast.success('Venta procesada correctamente');
       setCarrito([]);
-      
-      // Abrir modal con el detalle de la venta recién creada
-      if (response.data?.data?.id_venta) {
-        setVentaSeleccionada(response.data.data.id_venta);
-        setShowDetalleModal(true);
-      }
-      
+      limpiarCliente();
       loadData();
+
     } catch (error) {
       console.error('Error al procesar venta:', error);
-      console.error('Respuesta del servidor:', error.response?.data);
       toast.error(error.response?.data?.message || 'Error al procesar venta');
     } finally {
       setProcesando(false);
     }
   };
 
-  const abrirDetalleVenta = (ventaId) => {
+  const handleVerDetalle = (ventaId) => {
     setVentaSeleccionada(ventaId);
     setShowDetalleModal(true);
   };
@@ -215,21 +314,22 @@ const NuevaVentaScreen = () => {
     loadData();
   };
 
-  const getEstadoBadge = (estado) => {
-    const badges = {
-      'PENDIENTE': { bg: 'warning', text: 'Pendiente' },
-      'COMPLETADA': { bg: 'success', text: 'Completada' },
-      'CANCELADA': { bg: 'danger', text: 'Cancelada' }
-    };
-    return badges[estado] || { bg: 'secondary', text: estado };
-  };
+  const productosFiltrados = productos.filter(p => {
+    if (filtroCategoria && p.id_categoria !== parseInt(filtroCategoria)) {
+      return false;
+    }
+    return p.disponible;
+  });
 
-  const productosFiltrados = filtroCategoria
-    ? productos.filter(p => p.nombre_categoria === filtroCategoria)
-    : productos;
-
-  const totalUSD = calcularTotal();
-  const totalMoneda = totalUSD * (tasas[monedaSeleccionada] || 1);
+  if (loading) {
+    return (
+      <div className="text-center py-5">
+        <div className="spinner-border text-primary" role="status">
+          <span className="visually-hidden">Cargando...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -238,95 +338,91 @@ const NuevaVentaScreen = () => {
           <i className="bi bi-cart-plus me-2 text-primary"></i>
           Nueva Venta
         </h2>
-        <div className="d-flex gap-2">
+        <div className="d-flex gap-2 align-items-center">
           <Form.Select
             value={monedaSeleccionada}
             onChange={(e) => setMonedaSeleccionada(e.target.value)}
-            style={{ width: '200px' }}
+            style={{ width: 'auto' }}
           >
-            {monedas.length > 0 ? (
-              monedas.map(moneda => (
-                <option key={moneda.id_moneda} value={moneda.codigo_moneda}>
-                  {moneda.codigo_moneda} ({moneda.simbolo})
-                </option>
-              ))
-            ) : (
-              <>
-                <option value="USD">USD ($)</option>
-                <option value="VES">VES (Bs.)</option>
-                <option value="COP">COP ($)</option>
-              </>
-            )}
+            <option value="COP">Pesos (COP)</option>
+            <option value="VES">Bolívares (VES)</option>
+            <option value="USD">Dólares (USD)</option>
           </Form.Select>
+          {tasas[monedaSeleccionada] && monedaSeleccionada !== 'USD' && (
+            <Badge bg="info">
+              Tasa: {tasas[monedaSeleccionada].toFixed(2)}
+            </Badge>
+          )}
         </div>
       </div>
 
       <Row>
-        {/* Productos */}
+        {/* Columna de Productos */}
         <Col lg={8}>
+          {/* Filtro de categorías */}
           <Card className="border-0 shadow-sm mb-4">
             <Card.Body>
-              <div className="mb-3">
-                <Form.Select
-                  value={filtroCategoria}
-                  onChange={(e) => setFiltroCategoria(e.target.value)}
-                >
-                  <option value="">Todas las categorías</option>
-                  {categorias.map(cat => (
-                    <option key={cat.id_categoria} value={cat.nombre_categoria}>
-                      {cat.nombre_categoria}
-                    </option>
-                  ))}
-                </Form.Select>
-              </div>
-
-              {loading ? (
-                <div className="text-center py-4">Cargando productos...</div>
-              ) : (
-                <Row>
-                  {productosFiltrados.map(producto => (
-                    <Col key={producto.id_producto} md={6} lg={4} className="mb-3">
-                      <Card 
-                        className="h-100 border-0 shadow-sm"
-                        style={{ cursor: 'pointer' }}
-                        onClick={() => agregarAlCarrito(producto)}
-                      >
-                        {producto.imagen_url ? (
-                          <Card.Img
-                            variant="top"
-                            src={producto.imagen_url}
-                            style={{ height: '150px', objectFit: 'cover' }}
-                          />
-                        ) : (
-                          <div
-                            className="bg-light d-flex align-items-center justify-content-center"
-                            style={{ height: '150px' }}
-                          >
-                            <i className="bi bi-image text-muted" style={{ fontSize: '2rem' }}></i>
-                          </div>
-                        )}
-                        <Card.Body>
-                          <Badge bg="primary" className="mb-2">{producto.nombre_categoria}</Badge>
-                          <Card.Title className="mb-1 small">{producto.nombre_producto}</Card.Title>
-                          <div className="d-flex justify-content-between align-items-center">
-                            <strong className="text-primary">
-                              {formatCurrency(parseFloat(producto.precio_base), 'USD')}
-                            </strong>
-                            <Badge bg={producto.disponible ? 'success' : 'danger'}>
-                              {producto.disponible ? 'Disponible' : 'No disponible'}
-                            </Badge>
-                          </div>
-                        </Card.Body>
-                      </Card>
-                    </Col>
-                  ))}
-                </Row>
-              )}
+              <Row>
+                <Col md={6}>
+                  <Form.Group>
+                    <Form.Label>Filtrar por Categoría</Form.Label>
+                    <Form.Select
+                      value={filtroCategoria}
+                      onChange={(e) => setFiltroCategoria(e.target.value)}
+                    >
+                      <option value="">Todas las categorías</option>
+                      {categorias.map((cat) => (
+                        <option key={cat.id_categoria} value={cat.id_categoria}>
+                          {cat.nombre_categoria}
+                        </option>
+                      ))}
+                    </Form.Select>
+                  </Form.Group>
+                </Col>
+              </Row>
             </Card.Body>
           </Card>
 
+          {/* Productos Grid */}
+          <Row>
+            {productosFiltrados.map(producto => (
+              <Col key={producto.id_producto} md={6} lg={4} className="mb-3">
+                <Card 
+                  className="h-100 border-0 shadow-sm" 
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => agregarAlCarrito(producto)}
+                >
+                  {producto.imagen_url && (
+                    <Card.Img
+                      variant="top"
+                      src={producto.imagen_url}
+                      alt={producto.nombre_producto}
+                      style={{ height: '150px', objectFit: 'cover' }}
+                    />
+                  )}
+                  <Card.Body>
+                    <Card.Title className="small">{producto.nombre_producto}</Card.Title>
+                    <div className="d-flex justify-content-between align-items-center">
+                      <h5 className="mb-0 text-primary">
+                        {monedaSeleccionada === 'COP' 
+                          ? formatCurrency(producto.precio_base, 'COP')
+                          : monedaSeleccionada === 'USD'
+                          ? formatCurrency(producto.precio_usd, 'USD')
+                          : formatCurrency(producto.precio_usd * tasas['VES'], 'VES')
+                        }
+                      </h5>
+                      <Button variant="primary" size="sm">
+                        <i className="bi bi-plus"></i>
+                      </Button>
+                    </div>
+                  </Card.Body>
+                </Card>
+              </Col>
+            ))}
+          </Row>
+
           {/* Ventas Recientes */}
-          <Card className="border-0 shadow-sm">
+          <Card className="border-0 shadow-sm mt-4">
             <Card.Header className="bg-white">
               <h5 className="mb-0">
                 <i className="bi bi-clock-history me-2"></i>
@@ -334,64 +430,57 @@ const NuevaVentaScreen = () => {
               </h5>
             </Card.Header>
             <Card.Body>
-              <div className="table-responsive">
-                <Table hover>
-                  <thead className="table-light">
-                    <tr>
-                      <th>Factura</th>
-                      <th>Fecha</th>
-                      <th>Total</th>
-                      <th>Moneda</th>
-                      <th>Estado</th>
-                      <th>Acciones</th>
+              <Table hover responsive>
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Cliente</th>
+                    <th>Moneda</th>
+                    <th>Total</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ventasRecientes.map(venta => (
+                    <tr key={venta.id_venta}>
+                      <td className="small">{formatDateTime(venta.fecha_venta)}</td>
+                      <td>{venta.nombre_cliente}</td>
+                      <td>
+                        <Badge bg="secondary">{venta.codigo_moneda}</Badge>
+                      </td>
+                      <td className="fw-bold">
+                        {formatCurrency(venta.total, venta.codigo_moneda)}
+                      </td>
+                      <td>
+                        <Badge bg={
+                          venta.estado === 'completada' ? 'success' :
+                          venta.estado === 'preparando' ? 'warning' :
+                          venta.estado === 'entregada' ? 'info' : 'secondary'
+                        }>
+                          {venta.estado}
+                        </Badge>
+                      </td>
+                      <td>
+                        <Button
+                          variant="outline-primary"
+                          size="sm"
+                          onClick={() => handleVerDetalle(venta.id_venta)}
+                        >
+                          <i className="bi bi-eye"></i>
+                        </Button>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {ventasRecientes.length === 0 ? (
-                      <tr>
-                        <td colSpan="6" className="text-center text-muted py-4">
-                          No hay ventas recientes
-                        </td>
-                      </tr>
-                    ) : (
-                      ventasRecientes.map(venta => (
-                        <tr key={venta.id_venta}>
-                          <td>{venta.numero_factura}</td>
-                          <td>{formatDateTime(venta.fecha_venta)}</td>
-                          <td className="fw-bold">
-                            {formatCurrency(parseFloat(venta.total || venta.monto_total || 0), venta.codigo_moneda)}
-                          </td>
-                          <td>
-                            <Badge bg="secondary">{venta.codigo_moneda}</Badge>
-                          </td>
-                          <td>
-                            <Badge bg={getEstadoBadge(venta.estado_venta).bg}>
-                              {getEstadoBadge(venta.estado_venta).text}
-                            </Badge>
-                          </td>
-                          <td>
-                            <Button
-                              variant="outline-primary"
-                              size="sm"
-                              onClick={() => abrirDetalleVenta(venta.id_venta)}
-                            >
-                              <i className="bi bi-eye me-1"></i>
-                              Ver
-                            </Button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </Table>
-              </div>
+                  ))}
+                </tbody>
+              </Table>
             </Card.Body>
           </Card>
         </Col>
 
-        {/* Carrito */}
+        {/* Columna del Carrito */}
         <Col lg={4}>
-          <Card className="border-0 shadow-sm sticky-top" style={{ top: '80px' }}>
+          <Card className="border-0 shadow-sm sticky-top" style={{ top: '20px' }}>
             <Card.Header className="bg-primary text-white">
               <h5 className="mb-0">
                 <i className="bi bi-cart3 me-2"></i>
@@ -399,6 +488,75 @@ const NuevaVentaScreen = () => {
               </h5>
             </Card.Header>
             <Card.Body style={{ maxHeight: '500px', overflowY: 'auto' }}>
+              {/* Campo de Cliente */}
+              <div className="mb-3">
+                <Form.Label className="fw-bold">
+                  <i className="bi bi-person me-2"></i>
+                  Cliente
+                </Form.Label>
+                <InputGroup>
+                  <Form.Control
+                    type="text"
+                    placeholder="Nombre del cliente..."
+                    value={nombreCliente}
+                    onChange={(e) => {
+                      setNombreCliente(e.target.value);
+                      if (clienteSeleccionado) {
+                        setClienteSeleccionado(null);
+                      }
+                    }}
+                    onFocus={() => {
+                      if (clientesEncontrados.length > 0) {
+                        setMostrarSugerencias(true);
+                      }
+                    }}
+                  />
+                  {clienteSeleccionado && (
+                    <Button
+                      variant="outline-secondary"
+                      onClick={limpiarCliente}
+                    >
+                      <i className="bi bi-x"></i>
+                    </Button>
+                  )}
+                </InputGroup>
+                {clienteSeleccionado && (
+                  <div className="mt-2">
+                    <Badge bg="success">
+                      <i className="bi bi-check-circle me-1"></i>
+                      Cliente registrado
+                    </Badge>
+                  </div>
+                )}
+                {/* Sugerencias de clientes */}
+                {mostrarSugerencias && clientesEncontrados.length > 0 && (
+                  <ListGroup className="position-absolute" style={{ zIndex: 1000, width: 'calc(100% - 30px)' }}>
+                    {clientesEncontrados.map(cliente => (
+                      <ListGroup.Item
+                        key={cliente.id_cliente}
+                        action
+                        onClick={() => seleccionarCliente(cliente)}
+                        className="cursor-pointer"
+                      >
+                        <div className="d-flex justify-content-between">
+                          <div>
+                            <strong>{cliente.nombre_cliente}</strong>
+                            {cliente.telefono && (
+                              <div className="small text-muted">{cliente.telefono}</div>
+                            )}
+                          </div>
+                          {cliente.email && (
+                            <small className="text-muted">{cliente.email}</small>
+                          )}
+                        </div>
+                      </ListGroup.Item>
+                    ))}
+                  </ListGroup>
+                )}
+              </div>
+
+              <hr />
+
               {carrito.length === 0 ? (
                 <div className="text-center py-5 text-muted">
                   <i className="bi bi-cart-x" style={{ fontSize: '3rem' }}></i>
@@ -412,7 +570,12 @@ const NuevaVentaScreen = () => {
                         <div className="flex-grow-1">
                           <strong>{item.nombre}</strong>
                           <div className="small text-muted">
-                            {formatCurrency(item.precio, 'USD')} x {item.cantidad}
+                            {monedaSeleccionada === 'COP' 
+                              ? formatCurrency(item.precio_cop, 'COP')
+                              : monedaSeleccionada === 'USD'
+                              ? formatCurrency(item.precio_usd, 'USD')
+                              : formatCurrency(item.precio_usd * tasas['VES'], 'VES')
+                            } x {item.cantidad}
                           </div>
                         </div>
                         <Button
@@ -425,16 +588,45 @@ const NuevaVentaScreen = () => {
                         </Button>
                       </div>
 
+                      {/* Sabores agregados */}
+                      {item.sabores.length > 0 && (
+                        <div className="mb-2">
+                          <small className="text-muted d-block mb-1">
+                            <i className="bi bi-snow2 me-1"></i>
+                            Sabores:
+                          </small>
+                          {item.sabores.map(sabor => (
+                            <Badge
+                              key={sabor.id_sabor}
+                              bg="info"
+                              className="me-1 mb-1"
+                            >
+                              {sabor.nombre}
+                              {sabor.precio > 0 && ` (+${formatCurrency(sabor.precio, monedaSeleccionada)})`}
+                              <i
+                                className="bi bi-x ms-1"
+                                style={{ cursor: 'pointer' }}
+                                onClick={() => removerSabor(item.id, sabor.id_sabor)}
+                              ></i>
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+
                       {/* Toppings agregados */}
                       {item.toppings.length > 0 && (
                         <div className="mb-2">
+                          <small className="text-muted d-block mb-1">
+                            <i className="bi bi-stars me-1"></i>
+                            Toppings:
+                          </small>
                           {item.toppings.map(topping => (
                             <Badge
                               key={topping.id_topping}
                               bg="secondary"
                               className="me-1 mb-1"
                             >
-                              {topping.nombre} (+{formatCurrency(topping.precio, 'USD')})
+                              {topping.nombre} (+{formatCurrency(topping.precio, monedaSeleccionada)})
                               <i
                                 className="bi bi-x ms-1"
                                 style={{ cursor: 'pointer' }}
@@ -445,9 +637,31 @@ const NuevaVentaScreen = () => {
                         </div>
                       )}
 
+                      {/* Selector de sabores */}
+                      <Form.Select
+                        size="sm"
+                        className="mb-2"
+                        onChange={(e) => {
+                          const sabor = sabores.find(s => s.id_sabor === parseInt(e.target.value));
+                          if (sabor) {
+                            agregarSabor(item.id, sabor);
+                            e.target.value = '';
+                          }
+                        }}
+                      >
+                        <option value="">+ Agregar sabor</option>
+                        {sabores.map(sabor => (
+                          <option key={sabor.id_sabor} value={sabor.id_sabor}>
+                            {sabor.nombre_sabor}
+                            {parseFloat(sabor.precio_adicional) > 0 && ` (+${formatCurrency(parseFloat(sabor.precio_adicional), monedaSeleccionada)})`}
+                          </option>
+                        ))}
+                      </Form.Select>
+
                       {/* Selector de toppings */}
                       <Form.Select
                         size="sm"
+                        className="mb-2"
                         onChange={(e) => {
                           const topping = toppings.find(t => t.id_topping === parseInt(e.target.value));
                           if (topping) {
@@ -459,7 +673,7 @@ const NuevaVentaScreen = () => {
                         <option value="">+ Agregar topping</option>
                         {toppings.map(topping => (
                           <option key={topping.id_topping} value={topping.id_topping}>
-                            {topping.nombre_topping} (+{formatCurrency(parseFloat(topping.precio_adicional), 'USD')})
+                            {topping.nombre_topping} (+{formatCurrency(parseFloat(topping.precio_adicional), monedaSeleccionada)})
                           </option>
                         ))}
                       </Form.Select>
@@ -482,7 +696,7 @@ const NuevaVentaScreen = () => {
                           <i className="bi bi-plus"></i>
                         </Button>
                         <div className="ms-auto fw-bold">
-                          {formatCurrency(calcularSubtotal(item), 'USD')}
+                          {formatCurrency(calcularSubtotal(item), monedaSeleccionada)}
                         </div>
                       </div>
                     </ListGroup.Item>
@@ -493,18 +707,12 @@ const NuevaVentaScreen = () => {
             
             {carrito.length > 0 && (
               <Card.Footer className="bg-light">
-                <div className="d-flex justify-content-between align-items-center mb-2">
-                  <strong>Total USD:</strong>
-                  <h5 className="mb-0 text-primary">{formatCurrency(totalUSD, 'USD')}</h5>
+                <div className="d-flex justify-content-between align-items-center mb-3">
+                  <strong>Total {monedaSeleccionada}:</strong>
+                  <h4 className="mb-0 text-success">
+                    {formatCurrency(totalMoneda, monedaSeleccionada)}
+                  </h4>
                 </div>
-                {monedaSeleccionada !== 'USD' && (
-                  <div className="d-flex justify-content-between align-items-center mb-3">
-                    <strong>Total {monedaSeleccionada}:</strong>
-                    <h5 className="mb-0 text-success">
-                      {formatCurrency(totalMoneda, monedaSeleccionada)}
-                    </h5>
-                  </div>
-                )}
                 <Button
                   variant="success"
                   className="w-100"
@@ -512,7 +720,12 @@ const NuevaVentaScreen = () => {
                   onClick={procesarVenta}
                   disabled={procesando}
                 >
-                  {procesando ? 'Procesando...' : (
+                  {procesando ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                      Procesando...
+                    </>
+                  ) : (
                     <>
                       <i className="bi bi-check-circle me-2"></i>
                       Procesar Venta

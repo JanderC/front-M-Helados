@@ -20,6 +20,7 @@ const DetalleVentaModal = ({ show, onHide, ventaId, onStatusChange }) => {
       setLoading(true);
       const response = await ventasService.getById(ventaId);
       const ventaData = response.data?.data || response.data;
+      console.log('Venta cargada:', ventaData); // Debug
       setVenta(ventaData);
     } catch (error) {
       console.error('Error al cargar detalle de venta:', error);
@@ -58,6 +59,7 @@ const DetalleVentaModal = ({ show, onHide, ventaId, onStatusChange }) => {
   const getEstadoBadge = (estado) => {
     const badges = {
       'PENDIENTE': { bg: 'warning', text: 'Pendiente' },
+      'EN_PROCESO': { bg: 'info', text: 'En Proceso' },
       'COMPLETADA': { bg: 'success', text: 'Completada' },
       'CANCELADA': { bg: 'danger', text: 'Cancelada' }
     };
@@ -67,18 +69,15 @@ const DetalleVentaModal = ({ show, onHide, ventaId, onStatusChange }) => {
   const calcularSubtotal = (item) => {
     const precioBase = parseFloat(item.precio_unitario || item.precio || 0) * parseInt(item.cantidad || 0);
     const precioToppings = (item.toppings || []).reduce((sum, t) => 
-      sum + (parseFloat(t.precio || 0) * parseInt(item.cantidad || 0)), 0
+      sum + (parseFloat(t.precio || t.precio_unitario || 0) * parseInt(item.cantidad || 0)), 0
     );
     return precioBase + precioToppings;
   };
 
   // Función para obtener el código de moneda correcto
   const getCodigoMoneda = () => {
-    // Priorizar codigo_moneda, luego id_moneda, luego moneda, por defecto USD
     return venta?.codigo_moneda || venta?.moneda || 'USD';
   };
-
-  if (!show) return null;
 
   const codigoMoneda = venta ? getCodigoMoneda() : 'USD';
 
@@ -94,7 +93,7 @@ const DetalleVentaModal = ({ show, onHide, ventaId, onStatusChange }) => {
       >
         <Modal.Title>
           <i className="bi bi-receipt me-2"></i>
-          Detalle de Venta #{ventaId}
+          Detalle de Venta {ventaId ? `#${ventaId}` : ''}
         </Modal.Title>
       </Modal.Header>
       <Modal.Body className="p-4">
@@ -118,6 +117,16 @@ const DetalleVentaModal = ({ show, onHide, ventaId, onStatusChange }) => {
                     {getEstadoBadge(venta.estado_venta).text}
                   </Badge>
                 </div>
+                {/* Mostrar nombre del cliente */}
+                {venta.nombre_cliente && (
+                  <div className="mb-3">
+                    <small className="text-muted d-block mb-1">
+                      <i className="bi bi-person me-1"></i>
+                      Cliente
+                    </small>
+                    <strong>{venta.nombre_cliente}</strong>
+                  </div>
+                )}
               </Col>
               <Col md={6}>
                 <div className="mb-3">
@@ -136,6 +145,10 @@ const DetalleVentaModal = ({ show, onHide, ventaId, onStatusChange }) => {
                     {codigoMoneda === 'COP' && '💵 Pesos (COP)'}
                     {!['USD', 'VES', 'COP'].includes(codigoMoneda) && codigoMoneda}
                   </Badge>
+                </div>
+                <div className="mb-3">
+                  <small className="text-muted d-block mb-1">Número de Factura</small>
+                  <strong>{venta.numero_factura || 'N/A'}</strong>
                 </div>
                 <div className="mb-3">
                   <small className="text-muted d-block mb-1">Atendido por</small>
@@ -205,8 +218,25 @@ const DetalleVentaModal = ({ show, onHide, ventaId, onStatusChange }) => {
                                     <i className="bi bi-plus-circle me-1"></i>
                                     {topping.nombre_topping || topping.nombre} 
                                     <span className="ms-1">
-                                      ({formatCurrency(topping.precio, codigoMoneda)})
+                                      (+{formatCurrency(topping.precio || topping.precio_unitario, codigoMoneda)})
                                     </span>
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Sabores */}
+                            {item.sabores && item.sabores.length > 0 && (
+                              <div className="mt-2">
+                                <small className="text-muted d-block mb-1">Sabores:</small>
+                                {item.sabores.map((sabor, idx) => (
+                                  <Badge 
+                                    key={idx} 
+                                    bg="info" 
+                                    className="me-1 mb-1"
+                                  >
+                                    <i className="bi bi-snow2 me-1"></i>
+                                    {sabor.nombre_sabor || sabor.nombre}
                                   </Badge>
                                 ))}
                               </div>

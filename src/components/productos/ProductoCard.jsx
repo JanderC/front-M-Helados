@@ -1,7 +1,14 @@
 import { Card, Button, Badge } from 'react-bootstrap';
 import { formatCurrency } from '../../utils/formatters';
+import { useMoneda } from '../../context/MonedaContext';
 
 const ProductoCard = ({ producto, onEdit, onDelete }) => {
+  const { convertirPrecio } = useMoneda();
+
+  // Convertir precios según la moneda actual
+  const precioConvertido = convertirPrecio(producto.precio_base, producto.precio_usd);
+  const costoConvertido = convertirPrecio(producto.costo_produccion, producto.costo_usd);
+
   return (
     <Card className="h-100 border-0 shadow-sm">
       <div className="position-relative">
@@ -51,17 +58,19 @@ const ProductoCard = ({ producto, onEdit, onDelete }) => {
         <div className="mt-auto">
           <div className="d-flex justify-content-between align-items-center mb-3">
             <div>
-              <small className="text-muted d-block">Precio Base</small>
+              <small className="text-muted d-block">Precio</small>
               <h5 className="mb-0 text-primary fw-bold">
-                {formatCurrency(producto.precio_base, 'USD')}
+                {formatCurrency(precioConvertido.monto, precioConvertido.moneda)}
               </h5>
             </div>
-            <div className="text-end">
-              <small className="text-muted d-block">Costo</small>
-              <small className="fw-bold">
-                {formatCurrency(producto.costo_produccion, 'USD')}
-              </small>
-            </div>
+            {(producto.costo_produccion || producto.costo_usd) && (
+              <div className="text-end">
+                <small className="text-muted d-block">Costo</small>
+                <small className="fw-bold">
+                  {formatCurrency(costoConvertido.monto, costoConvertido.moneda)}
+                </small>
+              </div>
+            )}
           </div>
 
           <div className="d-grid gap-2">
