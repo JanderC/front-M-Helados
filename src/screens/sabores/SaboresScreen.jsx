@@ -3,6 +3,7 @@ import { Card, Button, Table, Badge, Form, Row, Col, Modal } from 'react-bootstr
 import { saboresService } from '../../api/services/saboresService';
 import { toast } from 'react-toastify';
 import { formatCurrency } from '../../utils/formatters';
+import { useMoneda } from '../../context/MonedaContext';
 
 const SaboresScreen = () => {
   const [sabores, setSabores] = useState([]);
@@ -12,9 +13,12 @@ const SaboresScreen = () => {
   const [formData, setFormData] = useState({
     nombre_sabor: '',
     descripcion: '',
-    precio_adicional: '0.00'
+    precio_adicional_cop: '0.00',
+    precio_adicional_usd: '0.00'
   });
+  const [errors, setErrors] = useState({});
   const [filtroDisponible, setFiltroDisponible] = useState('');
+  const { convertirPrecio } = useMoneda();
 
   useEffect(() => {
     loadSabores();
@@ -43,16 +47,19 @@ const SaboresScreen = () => {
       setFormData({
         nombre_sabor: sabor.nombre_sabor,
         descripcion: sabor.descripcion || '',
-        precio_adicional: sabor.precio_adicional || '0.00'
+        precio_adicional_cop: sabor.precio_adicional_cop || '0.00',
+        precio_adicional_usd: sabor.precio_adicional_usd || '0.00'
       });
     } else {
       setSaborActual(null);
       setFormData({
         nombre_sabor: '',
         descripcion: '',
-        precio_adicional: '0.00'
+        precio_adicional_cop: '0.00',
+        precio_adicional_usd: '0.00'
       });
     }
+    setErrors({});
     setShowModal(true);
   };
 
@@ -62,20 +69,43 @@ const SaboresScreen = () => {
     setFormData({
       nombre_sabor: '',
       descripcion: '',
-      precio_adicional: '0.00'
+      precio_adicional_cop: '0.00',
+      precio_adicional_usd: '0.00'
     });
+    setErrors({});
   };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
+    if (errors[name]) {
+      setErrors({ ...errors, [name]: null });
+    }
+  };
+
+  const validate = () => {
+    const newErrors = {};
+
+    if (!formData.nombre_sabor.trim()) {
+      newErrors.nombre_sabor = 'El nombre es requerido';
+    }
+
+    if (!formData.precio_adicional_cop || parseFloat(formData.precio_adicional_cop) < 0) {
+      newErrors.precio_adicional_cop = 'El precio en COP no puede ser negativo';
+    }
+
+    if (!formData.precio_adicional_usd || parseFloat(formData.precio_adicional_usd) < 0) {
+      newErrors.precio_adicional_usd = 'El precio en USD no puede ser negativo';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!formData.nombre_sabor.trim()) {
-      toast.error('El nombre del sabor es requerido');
+    if (!validate()) {
       return;
     }
 
@@ -83,7 +113,8 @@ const SaboresScreen = () => {
       const data = {
         nombre_sabor: formData.nombre_sabor.trim(),
         descripcion: formData.descripcion.trim() || null,
-        precio_adicional: parseFloat(formData.precio_adicional) || 0
+        precio_adicional_cop: parseFloat(formData.precio_adicional_cop),
+        precio_adicional_usd: parseFloat(formData.precio_adicional_usd)
       };
 
       if (saborActual) {
@@ -156,6 +187,9 @@ const SaboresScreen = () => {
                 <option value="false">Solo no disponibles</option>
               </Form.Select>
             </Col>
+            <Col md={8} className="text-end">
+              <Badge bg="secondary">{sabores.length} sabores encontrados</Badge>
+            </Col>
           </Row>
 
           <div className="table-responsive">
@@ -173,58 +207,69 @@ const SaboresScreen = () => {
                 {loading ? (
                   <tr>
                     <td colSpan="5" className="text-center py-4">
+                      <div className="spinner-border spinner-border-sm text-primary me-2" />
                       Cargando sabores...
                     </td>
                   </tr>
                 ) : sabores.length === 0 ? (
                   <tr>
                     <td colSpan="5" className="text-center text-muted py-4">
+                      <i className="bi bi-inbox" style={{ fontSize: '2rem', display: 'block', marginBottom: '0.5rem' }}></i>
                       No hay sabores registrados
                     </td>
                   </tr>
                 ) : (
-                  sabores.map((sabor) => (
-                    <tr key={sabor.id_sabor}>
-                      <td>
-                        <strong>{sabor.nombre_sabor}</strong>
-                      </td>
-                      <td>
-                        <small className="text-muted">
-                          {sabor.descripcion || 'Sin descripción'}
-                        </small>
-                      </td>
-                      <td>
-                        <Badge bg="secondary">
-                          {formatCurrency(parseFloat(sabor.precio_adicional || 0), 'USD')}
-                        </Badge>
-                      </td>
-                      <td>
-                        <Form.Check
-                          type="switch"
-                          checked={sabor.disponible}
-                          onChange={() => handleToggleDisponible(sabor)}
-                          label={sabor.disponible ? 'Disponible' : 'No disponible'}
-                        />
-                      </td>
-                      <td className="text-end">
-                        <Button
-                          variant="outline-primary"
-                          size="sm"
-                          className="me-2"
-                          onClick={() => handleShowModal(sabor)}
-                        >
-                          <i className="bi bi-pencil"></i>
-                        </Button>
-                        <Button
-                          variant="outline-danger"
-                          size="sm"
-                          onClick={() => handleDelete(sabor.id_sabor)}
-                        >
-                          <i className="bi bi-trash"></i>
-                        </Button>
-                      </td>
-                    </tr>
-                  ))
+                  sabores.map((sabor) => {
+                    const precioConvertido = convertirPrecio(
+                      sabor.precio_adicional_cop,
+                      sabor.precio_adicional_usd
+                    );
+
+                    return (
+                      <tr key={sabor.id_sabor}>
+                        <td>
+                          <strong>{sabor.nombre_sabor}</strong>
+                        </td>
+                        <td>
+                          <small className="text-muted">
+                            {sabor.descripcion || 'Sin descripción'}
+                          </small>
+                        </td>
+                        <td>
+                          <Badge bg="secondary">
+                            {formatCurrency(precioConvertido.monto, precioConvertido.moneda)}
+                          </Badge>
+                        </td>
+                        <td>
+                          <Form.Check
+                            type="switch"
+                            checked={sabor.disponible}
+                            onChange={() => handleToggleDisponible(sabor)}
+                            label={sabor.disponible ? 'Disponible' : 'No disponible'}
+                          />
+                        </td>
+                        <td className="text-end">
+                          <Button
+                            variant="outline-primary"
+                            size="sm"
+                            className="me-2"
+                            onClick={() => handleShowModal(sabor)}
+                            title="Editar"
+                          >
+                            <i className="bi bi-pencil"></i>
+                          </Button>
+                          <Button
+                            variant="outline-danger"
+                            size="sm"
+                            onClick={() => handleDelete(sabor.id_sabor)}
+                            title="Eliminar"
+                          >
+                            <i className="bi bi-trash"></i>
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </Table>
@@ -233,7 +278,7 @@ const SaboresScreen = () => {
       </Card>
 
       {/* Modal de Formulario */}
-      <Modal show={showModal} onHide={handleCloseModal} centered>
+      <Modal show={showModal} onHide={handleCloseModal} centered size="lg">
         <Modal.Header closeButton>
           <Modal.Title>
             <i className="bi bi-ice-cream me-2"></i>
@@ -250,8 +295,11 @@ const SaboresScreen = () => {
                 value={formData.nombre_sabor}
                 onChange={handleChange}
                 placeholder="Ej: Vainilla Francesa"
-                required
+                isInvalid={!!errors.nombre_sabor}
               />
+              <Form.Control.Feedback type="invalid">
+                {errors.nombre_sabor}
+              </Form.Control.Feedback>
             </Form.Group>
 
             <Form.Group className="mb-3">
@@ -266,20 +314,56 @@ const SaboresScreen = () => {
               />
             </Form.Group>
 
-            <Form.Group className="mb-3">
-              <Form.Label>Precio Adicional (USD)</Form.Label>
-              <Form.Control
-                type="number"
-                step="0.01"
-                name="precio_adicional"
-                value={formData.precio_adicional}
-                onChange={handleChange}
-                placeholder="0.00"
-              />
-              <Form.Text className="text-muted">
-                Costo extra por seleccionar este sabor (0 si no aplica)
-              </Form.Text>
-            </Form.Group>
+            {/* Precios */}
+            <div className="border rounded p-3 mb-3 bg-light">
+              <h6 className="mb-3">
+                <i className="bi bi-cash-stack me-2"></i>
+                Precios Adicionales
+              </h6>
+              <Row>
+                <Col md={6}>
+                  <Form.Group className="mb-3">
+                    <Form.Label>Precio en Pesos (COP) *</Form.Label>
+                    <Form.Control
+                      type="number"
+                      step="0.01"
+                      name="precio_adicional_cop"
+                      value={formData.precio_adicional_cop}
+                      onChange={handleChange}
+                      placeholder="0.00"
+                      isInvalid={!!errors.precio_adicional_cop}
+                    />
+                    <Form.Text className="text-muted">
+                      Costo extra en pesos colombianos (0 si no aplica)
+                    </Form.Text>
+                    <Form.Control.Feedback type="invalid">
+                      {errors.precio_adicional_cop}
+                    </Form.Control.Feedback>
+                  </Form.Group>
+                </Col>
+
+                <Col md={6}>
+                  <Form.Group className="mb-3">
+                    <Form.Label>Precio Referencia (USD) *</Form.Label>
+                    <Form.Control
+                      type="number"
+                      step="0.01"
+                      name="precio_adicional_usd"
+                      value={formData.precio_adicional_usd}
+                      onChange={handleChange}
+                      placeholder="0.00"
+                      isInvalid={!!errors.precio_adicional_usd}
+                    />
+                    <Form.Text className="text-muted">
+                      Usado para conversión a bolívares
+                    </Form.Text>
+                    <Form.Control.Feedback type="invalid">
+                      {errors.precio_adicional_usd}
+                    </Form.Control.Feedback>
+                  </Form.Group>
+                </Col>
+              </Row>
+            </div>
           </Modal.Body>
           <Modal.Footer>
             <Button variant="secondary" onClick={handleCloseModal}>

@@ -163,7 +163,7 @@ const NuevaVentaScreen = () => {
           toppings: [...item.toppings, {
             id_topping: topping.id_topping,
             nombre: topping.nombre_topping,
-            precio: parseFloat(topping.precio_adicional)
+            precio: parseFloat(topping.precio_adicional_cop)
           }]
         };
       }
