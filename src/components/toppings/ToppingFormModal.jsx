@@ -7,8 +7,10 @@ const ToppingFormModal = ({ show, onHide, topping, onSaveSuccess }) => {
   const [formData, setFormData] = useState({
     nombre_topping: '',
     descripcion: '',
-    precio_adicional: '',
-    costo_unitario: '',
+    precio_adicional_cop: '',
+    precio_adicional_usd: '',
+    costo_unitario_cop: '',
+    costo_unitario_usd: '',
     stock_actual: '',
     stock_minimo: '',
     unidad_medida: 'gramos'
@@ -21,8 +23,10 @@ const ToppingFormModal = ({ show, onHide, topping, onSaveSuccess }) => {
       setFormData({
         nombre_topping: topping.nombre_topping || '',
         descripcion: topping.descripcion || '',
-        precio_adicional: topping.precio_adicional || '',
-        costo_unitario: topping.costo_unitario || '',
+        precio_adicional_cop: topping.precio_adicional_cop || '',
+        precio_adicional_usd: topping.precio_adicional_usd || '',
+        costo_unitario_cop: topping.costo_unitario_cop || '',
+        costo_unitario_usd: topping.costo_unitario_usd || '',
         stock_actual: topping.stock_actual || '',
         stock_minimo: topping.stock_minimo || '',
         unidad_medida: topping.unidad_medida || 'gramos'
@@ -36,8 +40,10 @@ const ToppingFormModal = ({ show, onHide, topping, onSaveSuccess }) => {
     setFormData({
       nombre_topping: '',
       descripcion: '',
-      precio_adicional: '',
-      costo_unitario: '',
+      precio_adicional_cop: '',
+      precio_adicional_usd: '',
+      costo_unitario_cop: '',
+      costo_unitario_usd: '',
       stock_actual: '',
       stock_minimo: '',
       unidad_medida: 'gramos'
@@ -66,12 +72,20 @@ const ToppingFormModal = ({ show, onHide, topping, onSaveSuccess }) => {
       newErrors.nombre_topping = 'El nombre es requerido';
     }
 
-    if (!formData.precio_adicional || formData.precio_adicional < 0) {
-      newErrors.precio_adicional = 'El precio no puede ser negativo';
+    if (!formData.precio_adicional_cop || formData.precio_adicional_cop < 0) {
+      newErrors.precio_adicional_cop = 'El precio en COP no puede ser negativo';
     }
 
-    if (!formData.costo_unitario || formData.costo_unitario < 0) {
-      newErrors.costo_unitario = 'El costo no puede ser negativo';
+    if (!formData.precio_adicional_usd || formData.precio_adicional_usd < 0) {
+      newErrors.precio_adicional_usd = 'El precio en USD no puede ser negativo';
+    }
+
+    if (formData.costo_unitario_cop && formData.costo_unitario_cop < 0) {
+      newErrors.costo_unitario_cop = 'El costo en COP no puede ser negativo';
+    }
+
+    if (formData.costo_unitario_usd && formData.costo_unitario_usd < 0) {
+      newErrors.costo_unitario_usd = 'El costo en USD no puede ser negativo';
     }
 
     if (!formData.stock_actual || formData.stock_actual < 0) {
@@ -103,8 +117,10 @@ const ToppingFormModal = ({ show, onHide, topping, onSaveSuccess }) => {
       const data = {
         nombre_topping: formData.nombre_topping.trim(),
         descripcion: formData.descripcion.trim(),
-        precio_adicional: parseFloat(formData.precio_adicional),
-        costo_unitario: parseFloat(formData.costo_unitario),
+        precio_adicional_cop: parseFloat(formData.precio_adicional_cop),
+        precio_adicional_usd: parseFloat(formData.precio_adicional_usd),
+        costo_unitario_cop: formData.costo_unitario_cop ? parseFloat(formData.costo_unitario_cop) : null,
+        costo_unitario_usd: formData.costo_unitario_usd ? parseFloat(formData.costo_unitario_usd) : null,
         stock_actual: parseInt(formData.stock_actual),
         stock_minimo: parseInt(formData.stock_minimo),
         unidad_medida: formData.unidad_medida.trim()
@@ -196,46 +212,107 @@ const ToppingFormModal = ({ show, onHide, topping, onSaveSuccess }) => {
             />
           </Form.Group>
 
-          <Row>
-            <Col md={6}>
-              <Form.Group className="mb-3">
-                <Form.Label>Precio Adicional (USD) *</Form.Label>
-                <Form.Control
-                  type="number"
-                  step="0.01"
-                  name="precio_adicional"
-                  value={formData.precio_adicional}
-                  onChange={handleChange}
-                  isInvalid={!!errors.precio_adicional}
-                  disabled={loading}
-                  placeholder="0.00"
-                />
-                <Form.Control.Feedback type="invalid">
-                  {errors.precio_adicional}
-                </Form.Control.Feedback>
-              </Form.Group>
-            </Col>
+          {/* Precios */}
+          <div className="border rounded p-3 mb-3 bg-light">
+            <h6 className="mb-3">
+              <i className="bi bi-cash-stack me-2"></i>
+              Precios Adicionales
+            </h6>
+            <Row>
+              <Col md={6}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Precio en Pesos (COP) *</Form.Label>
+                  <Form.Control
+                    type="number"
+                    step="0.01"
+                    name="precio_adicional_cop"
+                    value={formData.precio_adicional_cop}
+                    onChange={handleChange}
+                    isInvalid={!!errors.precio_adicional_cop}
+                    disabled={loading}
+                    placeholder="1000.00"
+                  />
+                  <Form.Text className="text-muted">
+                    Precio adicional en pesos colombianos
+                  </Form.Text>
+                  <Form.Control.Feedback type="invalid">
+                    {errors.precio_adicional_cop}
+                  </Form.Control.Feedback>
+                </Form.Group>
+              </Col>
 
-            <Col md={6}>
-              <Form.Group className="mb-3">
-                <Form.Label>Costo Unitario (USD) *</Form.Label>
-                <Form.Control
-                  type="number"
-                  step="0.01"
-                  name="costo_unitario"
-                  value={formData.costo_unitario}
-                  onChange={handleChange}
-                  isInvalid={!!errors.costo_unitario}
-                  disabled={loading}
-                  placeholder="0.00"
-                />
-                <Form.Control.Feedback type="invalid">
-                  {errors.costo_unitario}
-                </Form.Control.Feedback>
-              </Form.Group>
-            </Col>
-          </Row>
+              <Col md={6}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Precio Referencia (USD) *</Form.Label>
+                  <Form.Control
+                    type="number"
+                    step="0.01"
+                    name="precio_adicional_usd"
+                    value={formData.precio_adicional_usd}
+                    onChange={handleChange}
+                    isInvalid={!!errors.precio_adicional_usd}
+                    disabled={loading}
+                    placeholder="0.30"
+                  />
+                  <Form.Text className="text-muted">
+                    Usado para conversión a bolívares
+                  </Form.Text>
+                  <Form.Control.Feedback type="invalid">
+                    {errors.precio_adicional_usd}
+                  </Form.Control.Feedback>
+                </Form.Group>
+              </Col>
+            </Row>
+          </div>
 
+          {/* Costos */}
+          <div className="border rounded p-3 mb-3 bg-light">
+            <h6 className="mb-3">
+              <i className="bi bi-calculator me-2"></i>
+              Costos Unitarios (Opcional)
+            </h6>
+            <Row>
+              <Col md={6}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Costo en Pesos (COP)</Form.Label>
+                  <Form.Control
+                    type="number"
+                    step="0.01"
+                    name="costo_unitario_cop"
+                    value={formData.costo_unitario_cop}
+                    onChange={handleChange}
+                    isInvalid={!!errors.costo_unitario_cop}
+                    disabled={loading}
+                    placeholder="500.00"
+                  />
+                  <Form.Control.Feedback type="invalid">
+                    {errors.costo_unitario_cop}
+                  </Form.Control.Feedback>
+                </Form.Group>
+              </Col>
+
+              <Col md={6}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Costo Referencia (USD)</Form.Label>
+                  <Form.Control
+                    type="number"
+                    step="0.01"
+                    name="costo_unitario_usd"
+                    value={formData.costo_unitario_usd}
+                    onChange={handleChange}
+                    isInvalid={!!errors.costo_unitario_usd}
+                    disabled={loading}
+                    placeholder="0.15"
+                  />
+                  <Form.Control.Feedback type="invalid">
+                    {errors.costo_unitario_usd}
+                  </Form.Control.Feedback>
+                </Form.Group>
+              </Col>
+            </Row>
+          </div>
+
+          {/* Stock */}
           <Row>
             <Col md={6}>
               <Form.Group className="mb-3">
@@ -265,7 +342,7 @@ const ToppingFormModal = ({ show, onHide, topping, onSaveSuccess }) => {
                   onChange={handleChange}
                   isInvalid={!!errors.stock_minimo}
                   disabled={loading}
-                  placeholder="0"
+                  placeholder="10"
                 />
                 <Form.Control.Feedback type="invalid">
                   {errors.stock_minimo}

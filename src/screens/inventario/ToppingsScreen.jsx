@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { Row, Col, Card, Button, Spinner, Form, Badge, InputGroup, Table } from 'react-bootstrap';
 import { toppingsService } from '../../api/services/toppingsService';
@@ -5,6 +6,7 @@ import { toast } from 'react-toastify';
 import ToppingFormModal from '../../components/toppings/ToppingFormModal';
 import AjustarStockModal from '../../components/toppings/AjustarStockModal';
 import { formatCurrency } from '../../utils/formatters';
+import { useMoneda } from '../../context/MonedaContext';
 
 const ToppingsScreen = () => {
   const [toppings, setToppings] = useState([]);
@@ -14,6 +16,7 @@ const ToppingsScreen = () => {
   const [toppingEdit, setToppingEdit] = useState(null);
   const [toppingStock, setToppingStock] = useState(null);
   const [busqueda, setBusqueda] = useState('');
+  const { convertirPrecio } = useMoneda();
 
   useEffect(() => {
     loadToppings();
@@ -99,22 +102,6 @@ const ToppingsScreen = () => {
       <Card className="border-0 shadow-sm mb-4">
         <Card.Body>
           <Row>
-            <Col md={6}>
-              <Form.Group>
-                <Form.Label>Buscar</Form.Label>
-                <InputGroup>
-                  <InputGroup.Text>
-                    <i className="bi bi-search"></i>
-                  </InputGroup.Text>
-                  <Form.Control
-                    type="text"
-                    placeholder="Buscar topping..."
-                    value={busqueda}
-                    onChange={(e) => setBusqueda(e.target.value)}
-                  />
-                </InputGroup>
-              </Form.Group>
-            </Col>
             <Col md={6} className="d-flex align-items-end">
               <div>
                 <Badge bg="secondary">{toppingsFiltrados.length} toppings encontrados</Badge>
@@ -147,6 +134,7 @@ const ToppingsScreen = () => {
                     <th>Nombre</th>
                     <th>Descripción</th>
                     <th>Precio Adicional</th>
+                    <th>Costo Unitario</th>
                     <th>Stock</th>
                     <th>Stock Mínimo</th>
                     <th>Unidad</th>
@@ -157,13 +145,32 @@ const ToppingsScreen = () => {
                 <tbody>
                   {toppingsFiltrados.map((topping) => {
                     const stockBajo = topping.stock_actual <= topping.stock_minimo;
+                    
+                    // Convertir precios según la moneda actual
+                    const precioConvertido = convertirPrecio(
+                      topping.precio_adicional_cop, 
+                      topping.precio_adicional_usd
+                    );
+                    const costoConvertido = convertirPrecio(
+                      topping.costo_unitario_cop, 
+                      topping.costo_unitario_usd
+                    );
+                    
                     return (
                       <tr key={topping.id_topping}>
                         <td className="fw-medium">{topping.nombre_topping}</td>
                         <td className="text-muted small">
                           {topping.descripcion || '-'}
                         </td>
-                        <td>{formatCurrency(topping.precio_adicional, 'USD')}</td>
+                        <td>
+                          {formatCurrency(precioConvertido.monto, precioConvertido.moneda)}
+                        </td>
+                        <td>
+                          {(topping.costo_unitario_cop || topping.costo_unitario_usd) ? 
+                            formatCurrency(costoConvertido.monto, costoConvertido.moneda) : 
+                            '-'
+                          }
+                        </td>
                         <td>
                           <Badge bg={stockBajo ? 'danger' : 'success'}>
                             {topping.stock_actual}
