@@ -673,7 +673,7 @@ const NuevaVentaScreen = () => {
                         <option value="">+ Agregar topping</option>
                         {toppings.map(topping => (
                           <option key={topping.id_topping} value={topping.id_topping}>
-                            {topping.nombre_topping} (+{formatCurrency(parseFloat(topping.precio_adicional), monedaSeleccionada)})
+                            {topping.nombre_topping} (+{formatCurrency(parseFloat(topping.precio_adicional_cop), monedaSeleccionada)})
                           </option>
                         ))}
                       </Form.Select>

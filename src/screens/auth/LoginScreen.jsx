@@ -186,7 +186,7 @@ const LoginScreen = () => {
 
             <div className="text-center mt-3">
               <small style={{ color: 'rgba(255, 255, 255, 0.9)', textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}>
-                © 2025 M Helados. Todos los derechos reservados.
+                © 2024 M Helados. Todos los derechos reservados.
               </small>
             </div>
           </Col>
