@@ -17,7 +17,7 @@ const NuevaVentaScreen = () => {
   const [tasas, setTasas] = useState({ USD: 1, VES: 36, COP: 4000 });
   const [monedas, setMonedas] = useState([]);
   const [carrito, setCarrito] = useState([]);
-  const [monedaSeleccionada, setMonedaSeleccionada] = useState('COP'); // Cambiado a COP por defecto
+  const [monedaSeleccionada, setMonedaSeleccionada] = useState('COP');
   const [loading, setLoading] = useState(true);
   const [procesando, setProcesando] = useState(false);
   const [filtroCategoria, setFiltroCategoria] = useState('');
@@ -140,8 +140,8 @@ const NuevaVentaScreen = () => {
         id: Date.now(),
         id_producto: producto.id_producto,
         nombre: producto.nombre_producto,
-        precio_cop: parseFloat(producto.precio_base), // Precio en COP
-        precio_usd: parseFloat(producto.precio_usd || 0), // Precio en USD
+        precio_cop: parseFloat(producto.precio_base),
+        precio_usd: parseFloat(producto.precio_usd || 0),
         cantidad: 1,
         toppings: [],
         sabores: [],
@@ -163,7 +163,8 @@ const NuevaVentaScreen = () => {
           toppings: [...item.toppings, {
             id_topping: topping.id_topping,
             nombre: topping.nombre_topping,
-            precio: parseFloat(topping.precio_adicional_cop)
+            precio_cop: parseFloat(topping.precio_adicional_cop || 0),
+            precio_usd: parseFloat(topping.precio_adicional_usd || 0)
           }]
         };
       }
@@ -228,24 +229,38 @@ const NuevaVentaScreen = () => {
   };
 
   const calcularSubtotal = (item) => {
-    const precioBase = monedaSeleccionada === 'COP' ? item.precio_cop : item.precio_usd;
-    const precioToppings = item.toppings.reduce((sum, t) => sum + t.precio, 0);
-    const precioSabores = item.sabores.reduce((sum, s) => sum + s.precio, 0);
+    let precioBase, precioToppings, precioSabores;
+
+    if (monedaSeleccionada === 'COP') {
+      precioBase = item.precio_cop;
+      precioToppings = item.toppings.reduce((sum, t) => sum + t.precio_cop, 0);
+      precioSabores = item.sabores.reduce((sum, s) => sum + s.precio, 0);
+    } else if (monedaSeleccionada === 'USD') {
+      precioBase = item.precio_usd;
+      precioToppings = item.toppings.reduce((sum, t) => sum + t.precio_usd, 0);
+      precioSabores = item.sabores.reduce((sum, s) => sum + s.precio, 0);
+    } else {
+      // VES = USD × tasa BCV
+      precioBase = item.precio_usd * tasas['VES'];
+      precioToppings = item.toppings.reduce((sum, t) => sum + (t.precio_usd * tasas['VES']), 0);
+      precioSabores = item.sabores.reduce((sum, s) => sum + s.precio, 0);
+    }
+
     return (precioBase + precioToppings + precioSabores) * item.cantidad;
   };
 
   // Calcular total en COP
   const totalCOP = carrito.reduce((total, item) => {
     const precioBase = item.precio_cop;
-    const precioToppings = item.toppings.reduce((sum, t) => sum + t.precio, 0);
+    const precioToppings = item.toppings.reduce((sum, t) => sum + t.precio_cop, 0);
     const precioSabores = item.sabores.reduce((sum, s) => sum + s.precio, 0);
     return total + ((precioBase + precioToppings + precioSabores) * item.cantidad);
   }, 0);
 
-  // Calcular total en USD (para conversión a VES)
+  // Calcular total en USD
   const totalUSD = carrito.reduce((total, item) => {
     const precioBase = item.precio_usd;
-    const precioToppings = item.toppings.reduce((sum, t) => sum + t.precio, 0);
+    const precioToppings = item.toppings.reduce((sum, t) => sum + t.precio_usd, 0);
     const precioSabores = item.sabores.reduce((sum, s) => sum + s.precio, 0);
     return total + ((precioBase + precioToppings + precioSabores) * item.cantidad);
   }, 0);
@@ -255,14 +270,13 @@ const NuevaVentaScreen = () => {
     ? totalCOP 
     : monedaSeleccionada === 'USD'
     ? totalUSD
-    : totalUSD * (tasas['VES'] || 1); // Para VES, usar el precio USD × tasa BCV
+    : totalUSD * (tasas['VES'] || 1);
 
   const procesarVenta = async () => {
     if (carrito.length === 0) {
       toast.warning('El carrito está vacío');
       return;
     }
-
 
     try {
       setProcesando(true);
@@ -274,7 +288,7 @@ const NuevaVentaScreen = () => {
         toppings: item.toppings.map(t => ({
           id_topping: t.id_topping,
           cantidad: item.cantidad,
-          precio_unitario: t.precio
+          precio_unitario: monedaSeleccionada === 'COP' ? t.precio_cop : t.precio_usd
         })),
         sabores: item.sabores.map(s => ({
           id_sabor: s.id_sabor
@@ -320,6 +334,18 @@ const NuevaVentaScreen = () => {
     }
     return p.disponible;
   });
+
+  // Función auxiliar para obtener el precio del topping en la moneda seleccionada
+  const getPrecioTopping = (topping) => {
+    if (monedaSeleccionada === 'COP') {
+      return topping.precio_cop;
+    } else if (monedaSeleccionada === 'USD') {
+      return topping.precio_usd;
+    } else {
+      // VES
+      return topping.precio_usd * tasas['VES'];
+    }
+  };
 
   if (loading) {
     return (
@@ -626,7 +652,7 @@ const NuevaVentaScreen = () => {
                               bg="secondary"
                               className="me-1 mb-1"
                             >
-                              {topping.nombre} (+{formatCurrency(topping.precio, monedaSeleccionada)})
+                              {topping.nombre} (+{formatCurrency(getPrecioTopping(topping), monedaSeleccionada)})
                               <i
                                 className="bi bi-x ms-1"
                                 style={{ cursor: 'pointer' }}
@@ -673,7 +699,13 @@ const NuevaVentaScreen = () => {
                         <option value="">+ Agregar topping</option>
                         {toppings.map(topping => (
                           <option key={topping.id_topping} value={topping.id_topping}>
-                            {topping.nombre_topping} (+{formatCurrency(parseFloat(topping.precio_adicional_cop), monedaSeleccionada)})
+                            {topping.nombre_topping} (+
+                            {monedaSeleccionada === 'COP' 
+                              ? formatCurrency(parseFloat(topping.precio_adicional_cop), 'COP')
+                              : monedaSeleccionada === 'USD'
+                              ? formatCurrency(parseFloat(topping.precio_adicional_usd), 'USD')
+                              : formatCurrency(parseFloat(topping.precio_adicional_usd) * tasas['VES'], 'VES')
+                            })
                           </option>
                         ))}
                       </Form.Select>
