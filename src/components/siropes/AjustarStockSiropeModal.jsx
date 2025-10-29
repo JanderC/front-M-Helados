@@ -3,6 +3,7 @@ import { Modal, Form, Button, Alert } from 'react-bootstrap';
 import { siropesService } from '../../api/services/siropesService';
 import { toast } from 'react-toastify';
 
+// pantalla de ajustar el stock del sirope
 const AjustarStockSiropeModal = ({ show, onHide, sirope, onSuccess }) => {
   const [formData, setFormData] = useState({
     tipo_movimiento: 'ENTRADA',
