@@ -4,7 +4,9 @@ import { siropesService } from '../../api/services/siropesService';
 import SiropeFormModal from '../../components/siropes/SiropeFormModal';
 import AjustarStockSiropeModal from '../../components/siropes/AjustarStockSiropeModal';
 import { toast } from 'react-toastify';
+import { formatCurrency } from '../../utils/formatters';
 import { useMoneda } from '../../context/MonedaContext';
+
 
 const SiropesScreen = () => {
   const [siropes, setSiropes] = useState([]);
@@ -13,7 +15,7 @@ const SiropesScreen = () => {
   const [showStockModal, setShowStockModal] = useState(false);
   const [selectedSirope, setSelectedSirope] = useState(null);
   const [filtroDisponible, setFiltroDisponible] = useState('todos');
-  const { formatCurrency, monedaActual } = useMoneda();
+  const { monedaActual } = useMoneda();
 
   useEffect(() => {
     loadSiropes();
