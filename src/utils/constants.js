@@ -40,6 +40,7 @@ export const RUTAS_ADMIN = [
   { path: '/dashboard', name: 'Dashboard', icon: 'bi-speedometer2' },
   { path: '/productos', name: 'Productos', icon: 'bi-box-seam' },
   { path: '/toppings', name: 'Toppings', icon: 'bi-stars' },
+  { path: '/siropes', name: 'Siropes', icon: 'bi-droplet-half' }, // NUEVO
   { path: '/ventas', name: 'Nueva Venta', icon: 'bi-cart-plus' },
   { path: '/ventas/lista', name: 'Lista Ventas', icon: 'bi-list-ul' },
   { path: '/caja', name: 'Flujo de Caja', icon: 'bi-cash-stack' },

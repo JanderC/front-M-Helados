@@ -3,6 +3,7 @@ import { Row, Col, Card, Button, Form, Badge, ListGroup, Table, InputGroup } fro
 import { productosService } from '../../api/services/productosService';
 import { toppingsService } from '../../api/services/toppingsService';
 import { saboresService } from '../../api/services/saboresService';
+import { siropesService } from '../../api/services/siropesService'; // NUEVO
 import { ventasService } from '../../api/services/ventasService';
 import { monedasService } from '../../api/services/monedasService';
 import { clientesService } from '../../api/services/clientesService';
@@ -14,6 +15,7 @@ const NuevaVentaScreen = () => {
   const [productos, setProductos] = useState([]);
   const [toppings, setToppings] = useState([]);
   const [sabores, setSabores] = useState([]);
+  const [siropes, setSiropes] = useState([]); // NUEVO
   const [tasas, setTasas] = useState({ USD: 1, VES: 36, COP: 4000 });
   const [monedas, setMonedas] = useState([]);
   const [carrito, setCarrito] = useState([]);
@@ -54,10 +56,11 @@ const NuevaVentaScreen = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [prodResponse, toppResponse, saboresResponse, tasasResponse, catResponse, ventasResponse] = await Promise.all([
+      const [prodResponse, toppResponse, saboresResponse, siropesResponse, tasasResponse, catResponse, ventasResponse] = await Promise.all([
         productosService.getAll(),
         toppingsService.getAll(),
         saboresService.getAll({ disponible: 'true' }),
+        siropesService.getAll({ disponible: 'true' }), // NUEVO
         monedasService.getTasas(),
         productosService.getCategorias(),
         ventasService.getAll({ limit: 10 })
@@ -66,6 +69,7 @@ const NuevaVentaScreen = () => {
       setProductos(prodResponse.data?.data || prodResponse.data || []);
       setToppings(toppResponse.data?.data || toppResponse.data || []);
       setSabores(saboresResponse.data?.data || saboresResponse.data || []);
+      setSiropes(siropesResponse.data?.data || siropesResponse.data || []); // NUEVO
       
       const monedasData = tasasResponse.data?.data || tasasResponse.data;
       if (Array.isArray(monedasData)) {
@@ -126,7 +130,8 @@ const NuevaVentaScreen = () => {
     const itemExistente = carrito.find(item => 
       item.id_producto === producto.id_producto && 
       item.toppings.length === 0 && 
-      item.sabores.length === 0
+      item.sabores.length === 0 &&
+      item.siropes.length === 0 // NUEVO
     );
 
     if (itemExistente) {
@@ -145,6 +150,7 @@ const NuevaVentaScreen = () => {
         cantidad: 1,
         toppings: [],
         sabores: [],
+        siropes: [], // NUEVO
         imagenUrl: producto.imagen_url
       }]);
     }
@@ -193,6 +199,29 @@ const NuevaVentaScreen = () => {
     }));
   };
 
+  // NUEVO - Agregar sirope
+  const agregarSirope = (itemId, sirope) => {
+    setCarrito(carrito.map(item => {
+      if (item.id === itemId) {
+        const siropeYaAgregado = item.siropes.find(s => s.id_sirope === sirope.id_sirope);
+        if (siropeYaAgregado) {
+          toast.warning('Este sirope ya fue agregado');
+          return item;
+        }
+        return {
+          ...item,
+          siropes: [...item.siropes, {
+            id_sirope: sirope.id_sirope,
+            nombre: sirope.nombre_sirope,
+            precio_cop: parseFloat(sirope.precio_adicional_cop || 0),
+            precio_usd: parseFloat(sirope.precio_adicional_usd || 0)
+          }]
+        };
+      }
+      return item;
+    }));
+  };
+
   const removerTopping = (itemId, toppingId) => {
     setCarrito(carrito.map(item => {
       if (item.id === itemId) {
@@ -217,6 +246,19 @@ const NuevaVentaScreen = () => {
     }));
   };
 
+  // NUEVO - Remover sirope
+  const removerSirope = (itemId, siropeId) => {
+    setCarrito(carrito.map(item => {
+      if (item.id === itemId) {
+        return {
+          ...item,
+          siropes: item.siropes.filter(s => s.id_sirope !== siropeId)
+        };
+      }
+      return item;
+    }));
+  };
+
   const actualizarCantidad = (itemId, nuevaCantidad) => {
     if (nuevaCantidad < 1) return;
     setCarrito(carrito.map(item =>
@@ -229,24 +271,27 @@ const NuevaVentaScreen = () => {
   };
 
   const calcularSubtotal = (item) => {
-    let precioBase, precioToppings, precioSabores;
+    let precioBase, precioToppings, precioSabores, precioSiropes;
 
     if (monedaSeleccionada === 'COP') {
       precioBase = item.precio_cop;
       precioToppings = item.toppings.reduce((sum, t) => sum + t.precio_cop, 0);
       precioSabores = item.sabores.reduce((sum, s) => sum + s.precio, 0);
+      precioSiropes = item.siropes.reduce((sum, s) => sum + s.precio_cop, 0); // NUEVO
     } else if (monedaSeleccionada === 'USD') {
       precioBase = item.precio_usd;
       precioToppings = item.toppings.reduce((sum, t) => sum + t.precio_usd, 0);
       precioSabores = item.sabores.reduce((sum, s) => sum + s.precio, 0);
+      precioSiropes = item.siropes.reduce((sum, s) => sum + s.precio_usd, 0); // NUEVO
     } else {
       // VES = USD × tasa BCV
       precioBase = item.precio_usd * tasas['VES'];
       precioToppings = item.toppings.reduce((sum, t) => sum + (t.precio_usd * tasas['VES']), 0);
       precioSabores = item.sabores.reduce((sum, s) => sum + s.precio, 0);
+      precioSiropes = item.siropes.reduce((sum, s) => sum + (s.precio_usd * tasas['VES']), 0); // NUEVO
     }
 
-    return (precioBase + precioToppings + precioSabores) * item.cantidad;
+    return (precioBase + precioToppings + precioSabores + precioSiropes) * item.cantidad;
   };
 
   // Calcular total en COP
@@ -254,7 +299,8 @@ const NuevaVentaScreen = () => {
     const precioBase = item.precio_cop;
     const precioToppings = item.toppings.reduce((sum, t) => sum + t.precio_cop, 0);
     const precioSabores = item.sabores.reduce((sum, s) => sum + s.precio, 0);
-    return total + ((precioBase + precioToppings + precioSabores) * item.cantidad);
+    const precioSiropes = item.siropes.reduce((sum, s) => sum + s.precio_cop, 0); // NUEVO
+    return total + ((precioBase + precioToppings + precioSabores + precioSiropes) * item.cantidad);
   }, 0);
 
   // Calcular total en USD
@@ -262,7 +308,8 @@ const NuevaVentaScreen = () => {
     const precioBase = item.precio_usd;
     const precioToppings = item.toppings.reduce((sum, t) => sum + t.precio_usd, 0);
     const precioSabores = item.sabores.reduce((sum, s) => sum + s.precio, 0);
-    return total + ((precioBase + precioToppings + precioSabores) * item.cantidad);
+    const precioSiropes = item.siropes.reduce((sum, s) => sum + s.precio_usd, 0); // NUEVO
+    return total + ((precioBase + precioToppings + precioSabores + precioSiropes) * item.cantidad);
   }, 0);
 
   // Calcular total en la moneda seleccionada
@@ -292,6 +339,11 @@ const NuevaVentaScreen = () => {
         })),
         sabores: item.sabores.map(s => ({
           id_sabor: s.id_sabor
+        })),
+        siropes: item.siropes.map(s => ({ // NUEVO
+          id_sirope: s.id_sirope,
+          cantidad: item.cantidad,
+          precio_unitario: monedaSeleccionada === 'COP' ? s.precio_cop : s.precio_usd
         }))
       }));
 
@@ -344,6 +396,18 @@ const NuevaVentaScreen = () => {
     } else {
       // VES
       return topping.precio_usd * tasas['VES'];
+    }
+  };
+
+  // NUEVO - Función para obtener precio del sirope
+  const getPrecioSirope = (sirope) => {
+    if (monedaSeleccionada === 'COP') {
+      return sirope.precio_cop;
+    } else if (monedaSeleccionada === 'USD') {
+      return sirope.precio_usd;
+    } else {
+      // VES
+      return sirope.precio_usd * tasas['VES'];
     }
   };
 
@@ -663,6 +727,30 @@ const NuevaVentaScreen = () => {
                         </div>
                       )}
 
+                      {/* NUEVO - Siropes agregados */}
+                      {item.siropes.length > 0 && (
+                        <div className="mb-2">
+                          <small className="text-muted d-block mb-1">
+                            <i className="bi bi-droplet-half me-1"></i>
+                            Siropes:
+                          </small>
+                          {item.siropes.map(sirope => (
+                            <Badge
+                              key={sirope.id_sirope}
+                              bg="warning"
+                              className="me-1 mb-1"
+                            >
+                              {sirope.nombre} (+{formatCurrency(getPrecioSirope(sirope), monedaSeleccionada)})
+                              <i
+                                className="bi bi-x ms-1"
+                                style={{ cursor: 'pointer' }}
+                                onClick={() => removerSirope(item.id, sirope.id_sirope)}
+                              ></i>
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+
                       {/* Selector de sabores */}
                       <Form.Select
                         size="sm"
@@ -705,6 +793,32 @@ const NuevaVentaScreen = () => {
                               : monedaSeleccionada === 'USD'
                               ? formatCurrency(parseFloat(topping.precio_adicional_usd), 'USD')
                               : formatCurrency(parseFloat(topping.precio_adicional_usd) * tasas['VES'], 'VES')
+                            })
+                          </option>
+                        ))}
+                      </Form.Select>
+
+                      {/* NUEVO - Selector de siropes */}
+                      <Form.Select
+                        size="sm"
+                        className="mb-2"
+                        onChange={(e) => {
+                          const sirope = siropes.find(s => s.id_sirope === parseInt(e.target.value));
+                          if (sirope) {
+                            agregarSirope(item.id, sirope);
+                            e.target.value = '';
+                          }
+                        }}
+                      >
+                        <option value="">+ Agregar sirope</option>
+                        {siropes.map(sirope => (
+                          <option key={sirope.id_sirope} value={sirope.id_sirope}>
+                            {sirope.nombre_sirope} (+
+                            {monedaSeleccionada === 'COP' 
+                              ? formatCurrency(parseFloat(sirope.precio_adicional_cop), 'COP')
+                              : monedaSeleccionada === 'USD'
+                              ? formatCurrency(parseFloat(sirope.precio_adicional_usd), 'USD')
+                              : formatCurrency(parseFloat(sirope.precio_adicional_usd) * tasas['VES'], 'VES')
                             })
                           </option>
                         ))}
