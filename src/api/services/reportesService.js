@@ -7,15 +7,12 @@ export const reportesService = {
   },
 
   // Generar reporte mensual
-  generarMensual: (mes, anio) => {
-    return api.post('/reportes/generar-mensual', {
-      mes,
-      anio
-    });
+  generarReporteMensual: (mes, anio) => {
+    return api.post('/reportes/generar-mensual', { mes, anio });
   },
 
-  // Listar reportes mensuales
-  getMensuales: (params = {}) => {
+  // Obtener reportes mensuales
+  getReportesMensuales: (params = {}) => {
     return api.get('/reportes/mensuales', { params });
   },
 
@@ -30,7 +27,7 @@ export const reportesService = {
   },
 
   // Reporte de inventario
-  getInventario: () => {
+  getReporteInventario: () => {
     return api.get('/reportes/inventario');
   },
 

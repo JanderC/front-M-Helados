@@ -6,7 +6,7 @@ import { toast } from 'react-toastify';
 const AbrirCajaModal = ({ show, onHide, onSuccess }) => {
   const [formData, setFormData] = useState({
     montoInicial: '',
-    moneda: 'USD'
+    moneda: 'COP' // Por defecto COP (Pesos Colombianos)
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -22,7 +22,7 @@ const AbrirCajaModal = ({ show, onHide, onSuccess }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!formData.montoInicial || formData.montoInicial < 0) {
+    if (!formData.montoInicial || parseFloat(formData.montoInicial) < 0) {
       setError('El monto inicial debe ser mayor o igual a 0');
       return;
     }
@@ -30,12 +30,14 @@ const AbrirCajaModal = ({ show, onHide, onSuccess }) => {
     try {
       setLoading(true);
       await cajaService.abrir(parseFloat(formData.montoInicial), formData.moneda);
-      toast.success('Caja abierta correctamente');
+      toast.success('✅ Caja abierta correctamente');
       onSuccess();
       handleClose();
     } catch (error) {
       console.error('Error al abrir caja:', error);
-      setError(error.response?.data?.message || 'Error al abrir caja');
+      const mensajeError = error.response?.data?.message || 'Error al abrir caja';
+      setError(mensajeError);
+      toast.error(mensajeError);
     } finally {
       setLoading(false);
     }
@@ -44,7 +46,7 @@ const AbrirCajaModal = ({ show, onHide, onSuccess }) => {
   const handleClose = () => {
     setFormData({
       montoInicial: '',
-      moneda: 'USD'
+      moneda: 'COP'
     });
     setError('');
     onHide();
@@ -64,7 +66,7 @@ const AbrirCajaModal = ({ show, onHide, onSuccess }) => {
 
           <Alert variant="info">
             <i className="bi bi-info-circle me-2"></i>
-            Ingresa el monto inicial con el que comenzará la caja del día.
+            Ingresa el monto inicial en efectivo con el que comenzará la caja del día.
           </Alert>
 
           <Form.Group className="mb-3">
@@ -75,14 +77,17 @@ const AbrirCajaModal = ({ show, onHide, onSuccess }) => {
               onChange={handleChange}
               disabled={loading}
             >
+              <option value="COP">COP - Peso Colombiano</option>
               <option value="USD">USD - Dólar</option>
               <option value="VES">VES - Bolívar</option>
-              <option value="COP">COP - Peso Colombiano</option>
             </Form.Select>
+            <Form.Text className="text-muted">
+              Selecciona la moneda principal con la que trabajarás hoy
+            </Form.Text>
           </Form.Group>
 
           <Form.Group className="mb-3">
-            <Form.Label>Monto Inicial *</Form.Label>
+            <Form.Label>Monto Inicial ({formData.moneda}) *</Form.Label>
             <Form.Control
               type="number"
               step="0.01"
@@ -92,9 +97,10 @@ const AbrirCajaModal = ({ show, onHide, onSuccess }) => {
               placeholder="0.00"
               disabled={loading}
               required
+              min="0"
             />
             <Form.Text className="text-muted">
-              Este será el monto de apertura de la caja
+              Este será el monto de apertura de la caja en efectivo
             </Form.Text>
           </Form.Group>
         </Modal.Body>
@@ -103,7 +109,17 @@ const AbrirCajaModal = ({ show, onHide, onSuccess }) => {
             Cancelar
           </Button>
           <Button variant="success" type="submit" disabled={loading}>
-            {loading ? 'Abriendo...' : 'Abrir Caja'}
+            {loading ? (
+              <>
+                <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                Abriendo...
+              </>
+            ) : (
+              <>
+                <i className="bi bi-unlock me-2"></i>
+                Abrir Caja
+              </>
+            )}
           </Button>
         </Modal.Footer>
       </Form>

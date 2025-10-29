@@ -37,10 +37,15 @@ const FlujoCajaScreen = () => {
       ]);
       
       // Extraer correctamente los datos según la estructura de la API
-      setEstadoCaja(estadoRes.data?.data || estadoRes.data);
-      setFlujo(flujoRes.data?.data || []);
-      setResumenVentas(resumenRes.data?.data || resumenRes.data);
-      setTasas(tasasRes.data?.data || tasasRes.data);
+      const estadoData = estadoRes.data?.data || estadoRes.data;
+      const flujoData = flujoRes.data?.data || [];
+      const resumenData = resumenRes.data?.data || resumenRes.data;
+      const tasasData = tasasRes.data?.data || tasasRes.data;
+      
+      setEstadoCaja(estadoData);
+      setFlujo(Array.isArray(flujoData) ? flujoData : []);
+      setResumenVentas(resumenData);
+      setTasas(tasasData);
     } catch (error) {
       console.error('Error al cargar datos:', error);
       toast.error('Error al cargar datos de caja');
@@ -83,6 +88,9 @@ const FlujoCajaScreen = () => {
 
   const totales = calcularTotales();
 
+  // Verificar si la caja está abierta
+  const cajaAbierta = estadoCaja?.estado === 'ABIERTA' || estadoCaja?.abierta === true;
+
   return (
     <div>
       <div className="d-flex justify-content-between align-items-center mb-4">
@@ -91,7 +99,7 @@ const FlujoCajaScreen = () => {
           Flujo de Caja
         </h2>
         <div className="d-flex gap-2">
-          {estadoCaja?.abierta ? (
+          {cajaAbierta ? (
             <>
               <Button variant="outline-primary" onClick={() => setShowTransaccionModal(true)}>
                 <i className="bi bi-plus-circle me-2"></i>
@@ -114,32 +122,48 @@ const FlujoCajaScreen = () => {
       {/* Estado de Caja */}
       <Row className="mb-4">
         <Col md={12}>
-          <Card className={`border-0 shadow-sm ${estadoCaja?.abierta ? 'border-start border-success border-4' : 'border-start border-danger border-4'}`}>
+          <Card className={`border-0 shadow-sm ${cajaAbierta ? 'border-start border-success border-4' : 'border-start border-danger border-4'}`}>
             <Card.Body>
               <Row className="align-items-center">
                 <Col md={3}>
                   <h5 className="mb-1">Estado de Caja</h5>
-                  <Badge bg={estadoCaja?.abierta ? 'success' : 'danger'} className="fs-6">
-                    {estadoCaja?.abierta ? 'ABIERTA' : 'CERRADA'}
+                  <Badge bg={cajaAbierta ? 'success' : 'danger'} className="fs-6">
+                    {cajaAbierta ? 'ABIERTA' : 'CERRADA'}
                   </Badge>
                 </Col>
-                {estadoCaja?.abierta && (
+                {cajaAbierta && estadoCaja && (
                   <>
                     <Col md={3}>
                       <small className="text-muted d-block">Apertura</small>
-                      <strong>{formatDateTime(estadoCaja.fechaApertura || estadoCaja.fecha_apertura)}</strong>
+                      <strong>{formatDateTime(estadoCaja.fecha_apertura || estadoCaja.fechaApertura)}</strong>
                     </Col>
                     <Col md={3}>
                       <small className="text-muted d-block">Monto Inicial</small>
                       <strong className="text-primary">
-                        {formatCurrency(estadoCaja.montoInicial || estadoCaja.monto_inicial_usd, estadoCaja.moneda || 'USD')}
+                        {parseFloat(estadoCaja.monto_inicial_cop || 0) > 0 && (
+                          <div>{formatCurrency(estadoCaja.monto_inicial_cop, 'COP')}</div>
+                        )}
+                        {parseFloat(estadoCaja.monto_inicial_usd || 0) > 0 && (
+                          <div>{formatCurrency(estadoCaja.monto_inicial_usd, 'USD')}</div>
+                        )}
+                        {parseFloat(estadoCaja.monto_inicial_ves || 0) > 0 && (
+                          <div>{formatCurrency(estadoCaja.monto_inicial_ves, 'VES')}</div>
+                        )}
                       </strong>
                     </Col>
                     <Col md={3}>
                       <small className="text-muted d-block">Responsable</small>
-                      <strong>{estadoCaja.usuario?.nombre || estadoCaja.usuario_apertura || 'N/A'}</strong>
+                      <strong>{estadoCaja.usuario_apertura || estadoCaja.usuario?.nombre || 'N/A'}</strong>
                     </Col>
                   </>
+                )}
+                {!cajaAbierta && (
+                  <Col md={9}>
+                    <Alert variant="info" className="mb-0">
+                      <i className="bi bi-info-circle me-2"></i>
+                      No hay caja abierta. Abre una caja para comenzar a registrar transacciones.
+                    </Alert>
+                  </Col>
                 )}
               </Row>
             </Card.Body>
@@ -157,7 +181,7 @@ const FlujoCajaScreen = () => {
                   <div>
                     <p className="text-muted mb-1">Total Ventas USD</p>
                     <h3 className="fw-bold mb-0 text-success">
-                      {formatCurrency(resumenVentas.totalUSD || resumenVentas.total_usd || 0, 'USD')}
+                      {formatCurrency(resumenVentas.total_usd_original || resumenVentas.totalUSD || 0, 'USD')}
                     </h3>
                   </div>
                   <div className="bg-success bg-opacity-10 p-3 rounded">
@@ -174,7 +198,7 @@ const FlujoCajaScreen = () => {
                   <div>
                     <p className="text-muted mb-1">Total Ventas VES</p>
                     <h3 className="fw-bold mb-0 text-info">
-                      {formatCurrency(resumenVentas.totalVES || resumenVentas.total_ves || 0, 'VES')}
+                      {formatCurrency(resumenVentas.total_ves || resumenVentas.totalVES || 0, 'VES')}
                     </h3>
                   </div>
                   <div className="bg-info bg-opacity-10 p-3 rounded">
@@ -191,7 +215,7 @@ const FlujoCajaScreen = () => {
                   <div>
                     <p className="text-muted mb-1">Total Ventas COP</p>
                     <h3 className="fw-bold mb-0 text-warning">
-                      {formatCurrency(resumenVentas.totalCOP || resumenVentas.total_cop || 0, 'COP')}
+                      {formatCurrency(resumenVentas.total_cop || resumenVentas.totalCOP || 0, 'COP')}
                     </h3>
                   </div>
                   <div className="bg-warning bg-opacity-10 p-3 rounded">
