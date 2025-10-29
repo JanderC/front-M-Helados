@@ -90,7 +90,7 @@ const LoginScreen = () => {
                 <div className="text-center mb-4">
                   <div className="mb-3">
                     <img 
-                      src="https://www.pangeatech.com.uy:85/imagenes/helados.png"
+                      src="https://www.pangeatech.com.uy:6068/bot-whatsapp-images/heladitos.png"
                       alt="M Helados Logo"
                       style={{
                         maxWidth: '280px',

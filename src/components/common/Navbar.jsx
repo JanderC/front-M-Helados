@@ -43,7 +43,7 @@ const Navbar = ({ onToggleSidebar }) => {
 
           <BSNavbar.Brand className="d-flex align-items-center">
             <img 
-              src="https://www.pangeatech.com.uy:85/imagenes/helados.png"
+              src="https://www.pangeatech.com.uy:6068/bot-whatsapp-images/heladitos.png"
               alt="M Helados"
               style={{
                 height: '40px',
@@ -52,7 +52,7 @@ const Navbar = ({ onToggleSidebar }) => {
               className="d-none d-sm-block"
             />
             <img 
-              src="https://www.pangeatech.com.uy:85/imagenes/helados.png"
+              src="https://www.pangeatech.com.uy:6068/bot-whatsapp-images/heladitos.png"
               alt="M Helados"
               style={{
                 height: '32px',
