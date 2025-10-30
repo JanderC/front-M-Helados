@@ -3,7 +3,7 @@ import { Modal, Button, Badge, ListGroup, Row, Col, Spinner, Alert } from 'react
 import { ventasService } from '../../api/services/ventasService';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { toast } from 'react-toastify';
-import { useSocket } from '../../contexts/SocketContext'; // 🔥 NUEVO
+import { useSocket } from "../../context/SocketContext";
 
 const DetalleVentaModal = ({ show, onHide, ventaId, onStatusChange }) => {
   const [venta, setVenta] = useState(null);

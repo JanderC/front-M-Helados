@@ -1,6 +1,6 @@
 import { Navbar as BSNavbar, Container, Nav, Dropdown, Badge, Button } from 'react-bootstrap';
 import { useAuth } from '../../hooks/useAuth';
-import { useSocket } from '../../hooks/useSocket';
+import { useSocket } from '../../context/SocketContext';
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import ChangePasswordModal from './ChangePasswordModal';

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Row, Col, Card, Badge, Button, Alert, Modal } from 'react-bootstrap';
 import { ventasService } from '../../api/services/ventasService';
-import { useSocket } from '../../hooks/useSocket';
+import { useSocket } from '../../context/SocketContext';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { toast } from 'react-toastify';
 
