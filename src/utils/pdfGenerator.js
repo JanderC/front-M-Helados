@@ -1,5 +1,5 @@
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 import { formatCurrency, formatDate, formatNumber } from './formatters';
 
 /**
@@ -43,7 +43,7 @@ export const generarPDFReporteMensual = (reporte) => {
     ['Número de Ventas:', reporte.numero_ventas.toString()]
   ];
   
-  doc.autoTable({
+  autoTable(doc, {
     startY: yPos,
     head: [],
     body: resumenData,
@@ -71,7 +71,7 @@ export const generarPDFReporteMensual = (reporte) => {
       formatNumber(p.cantidad, 0)
     ]);
     
-    doc.autoTable({
+    autoTable(doc, {
       startY: yPos,
       head: [['#', 'Producto', 'Cantidad']],
       body: productosData,
@@ -108,7 +108,7 @@ export const generarPDFReporteMensual = (reporte) => {
       formatNumber(t.cantidad, 0)
     ]);
     
-    doc.autoTable({
+    autoTable(doc, {
       startY: yPos,
       head: [['#', 'Topping', 'Cantidad']],
       body: toppingsData,
@@ -168,7 +168,7 @@ export const generarPDFProductosVendidos = (productos, fechaInicio, fechaFin) =>
     formatCurrency(p.ingresos_totales || p.total_ventas || 0, 'USD')
   ]);
   
-  doc.autoTable({
+  autoTable(doc, {
     startY: 35,
     head: [['#', 'Producto', 'Categoría', 'Cantidad', 'Ingresos']],
     body: productosData,
@@ -221,7 +221,7 @@ export const generarPDFToppingsUsados = (toppings, fechaInicio, fechaFin) => {
     formatCurrency(t.ingresos_totales || t.total_ventas || 0, 'USD')
   ]);
   
-  doc.autoTable({
+  autoTable(doc, {
     startY: 35,
     head: [['#', 'Topping', 'Veces Usado', 'Ingresos']],
     body: toppingsData,
@@ -271,7 +271,7 @@ export const generarPDFInventario = (inventario) => {
       t.nivel_stock || 'N/A'
     ]);
     
-    doc.autoTable({
+    autoTable(doc, {
       startY: yPos,
       head: [['Topping', 'Stock Actual', 'Stock Mínimo', 'Estado']],
       body: toppingsData,
@@ -308,7 +308,7 @@ export const generarPDFInventario = (inventario) => {
       m.nivel_stock || 'N/A'
     ]);
     
-    doc.autoTable({
+    autoTable(doc, {
       startY: yPos,
       head: [['Materia Prima', 'Cantidad Actual', 'Cantidad Mínima', 'Estado']],
       body: materiasData,
