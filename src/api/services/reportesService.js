@@ -26,7 +26,7 @@ export const reportesService = {
     return api.get('/reportes/toppings-usados', { params });
   },
 
-  // Reporte de inventario
+  // Reporte de inventario (CORREGIDO)
   getReporteInventario: () => {
     return api.get('/reportes/inventario');
   },
