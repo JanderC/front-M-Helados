@@ -3,11 +3,15 @@ import { Modal, Button, Badge, ListGroup, Row, Col, Spinner, Alert } from 'react
 import { ventasService } from '../../api/services/ventasService';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { toast } from 'react-toastify';
+import { useSocket } from '../../contexts/SocketContext'; // 🔥 NUEVO
 
 const DetalleVentaModal = ({ show, onHide, ventaId, onStatusChange }) => {
   const [venta, setVenta] = useState(null);
   const [loading, setLoading] = useState(false);
   const [procesando, setProcesando] = useState(false);
+
+  // 🔥 NUEVO - Hook de Socket
+  const { emitirCambioEstado } = useSocket();
 
   useEffect(() => {
     if (show && ventaId) {
@@ -20,7 +24,7 @@ const DetalleVentaModal = ({ show, onHide, ventaId, onStatusChange }) => {
       setLoading(true);
       const response = await ventasService.getById(ventaId);
       const ventaData = response.data?.data || response.data;
-      console.log('Venta cargada:', ventaData); // Debug
+      console.log('Venta cargada:', ventaData);
       setVenta(ventaData);
     } catch (error) {
       console.error('Error al cargar detalle de venta:', error);
@@ -38,6 +42,10 @@ const DetalleVentaModal = ({ show, onHide, ventaId, onStatusChange }) => {
       
       // Actualizar el estado local
       setVenta({ ...venta, estado_venta: nuevoEstado });
+
+      // 🔥 NUEVO - Emitir evento de socket
+      emitirCambioEstado(ventaId, nuevoEstado);
+      console.log('✅ Evento de cambio de estado emitido via socket');
       
       // Notificar al componente padre
       if (onStatusChange) {
@@ -74,7 +82,6 @@ const DetalleVentaModal = ({ show, onHide, ventaId, onStatusChange }) => {
     return precioBase + precioToppings;
   };
 
-  // Función para obtener el código de moneda correcto
   const getCodigoMoneda = () => {
     return venta?.codigo_moneda || venta?.moneda || 'USD';
   };
@@ -117,7 +124,6 @@ const DetalleVentaModal = ({ show, onHide, ventaId, onStatusChange }) => {
                     {getEstadoBadge(venta.estado_venta).text}
                   </Badge>
                 </div>
-                {/* Mostrar nombre del cliente */}
                 {venta.nombre_cliente && (
                   <div className="mb-3">
                     <small className="text-muted d-block mb-1">
@@ -314,6 +320,20 @@ const DetalleVentaModal = ({ show, onHide, ventaId, onStatusChange }) => {
                   </div>
                   <div className="d-flex gap-2">
                     <Button
+                      variant="info"
+                      size="sm"
+                      onClick={() => cambiarEstado('EN_PROCESO')}
+                      disabled={procesando}
+                      style={{ fontWeight: '500' }}
+                    >
+                      {procesando ? (
+                        <Spinner animation="border" size="sm" className="me-1" />
+                      ) : (
+                        <i className="bi bi-hourglass-split me-1"></i>
+                      )}
+                      En Proceso
+                    </Button>
+                    <Button
                       variant="success"
                       size="sm"
                       onClick={() => cambiarEstado('COMPLETADA')}
@@ -336,6 +356,41 @@ const DetalleVentaModal = ({ show, onHide, ventaId, onStatusChange }) => {
                     >
                       <i className="bi bi-x-circle me-1"></i>
                       Cancelar
+                    </Button>
+                  </div>
+                </div>
+              </Alert>
+            )}
+
+            {/* 🔥 NUEVO - Acciones adicionales para EN_PROCESO */}
+            {venta.estado_venta === 'EN_PROCESO' && (
+              <Alert 
+                variant="light"
+                className="mt-4 mb-0"
+                style={{ 
+                  border: '2px solid rgba(23, 162, 184, 0.2)',
+                  background: 'rgba(23, 162, 184, 0.05)'
+                }}
+              >
+                <div className="d-flex justify-content-between align-items-center flex-wrap gap-3">
+                  <div>
+                    <i className="bi bi-hourglass-split me-2" style={{ color: '#17a2b8' }}></i>
+                    <strong>Pedido en preparación</strong>
+                  </div>
+                  <div className="d-flex gap-2">
+                    <Button
+                      variant="success"
+                      size="sm"
+                      onClick={() => cambiarEstado('COMPLETADA')}
+                      disabled={procesando}
+                      style={{ fontWeight: '500' }}
+                    >
+                      {procesando ? (
+                        <Spinner animation="border" size="sm" className="me-1" />
+                      ) : (
+                        <i className="bi bi-check-circle me-1"></i>
+                      )}
+                      Marcar como Completado
                     </Button>
                   </div>
                 </div>

@@ -3,19 +3,20 @@ import { Row, Col, Card, Button, Form, Badge, ListGroup, Table, InputGroup } fro
 import { productosService } from '../../api/services/productosService';
 import { toppingsService } from '../../api/services/toppingsService';
 import { saboresService } from '../../api/services/saboresService';
-import { siropesService } from '../../api/services/siropesService'; // NUEVO
+import { siropesService } from '../../api/services/siropesService';
 import { ventasService } from '../../api/services/ventasService';
 import { monedasService } from '../../api/services/monedasService';
 import { clientesService } from '../../api/services/clientesService';
 import { toast } from 'react-toastify';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import DetalleVentaModal from '../../components/ventas/DetalleVentaModal';
+import { useSocket } from '../../context/SocketContext'; // 🔥 NUEVO
 
 const NuevaVentaScreen = () => {
   const [productos, setProductos] = useState([]);
   const [toppings, setToppings] = useState([]);
   const [sabores, setSabores] = useState([]);
-  const [siropes, setSiropes] = useState([]); // NUEVO
+  const [siropes, setSiropes] = useState([]);
   const [tasas, setTasas] = useState({ USD: 1, VES: 36, COP: 4000 });
   const [monedas, setMonedas] = useState([]);
   const [carrito, setCarrito] = useState([]);
@@ -34,6 +35,9 @@ const NuevaVentaScreen = () => {
   const [buscandoCliente, setBuscandoCliente] = useState(false);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
   const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
+
+  // 🔥 NUEVO - Hook de Socket
+  const { connected, emitirNuevaVenta } = useSocket();
 
   useEffect(() => {
     loadData();
@@ -60,7 +64,7 @@ const NuevaVentaScreen = () => {
         productosService.getAll(),
         toppingsService.getAll(),
         saboresService.getAll({ disponible: 'true' }),
-        siropesService.getAll({ disponible: 'true' }), // NUEVO
+        siropesService.getAll({ disponible: 'true' }),
         monedasService.getTasas(),
         productosService.getCategorias(),
         ventasService.getAll({ limit: 10 })
@@ -69,7 +73,7 @@ const NuevaVentaScreen = () => {
       setProductos(prodResponse.data?.data || prodResponse.data || []);
       setToppings(toppResponse.data?.data || toppResponse.data || []);
       setSabores(saboresResponse.data?.data || saboresResponse.data || []);
-      setSiropes(siropesResponse.data?.data || siropesResponse.data || []); // NUEVO
+      setSiropes(siropesResponse.data?.data || siropesResponse.data || []);
       
       const monedasData = tasasResponse.data?.data || tasasResponse.data;
       if (Array.isArray(monedasData)) {
@@ -131,7 +135,7 @@ const NuevaVentaScreen = () => {
       item.id_producto === producto.id_producto && 
       item.toppings.length === 0 && 
       item.sabores.length === 0 &&
-      item.siropes.length === 0 // NUEVO
+      item.siropes.length === 0
     );
 
     if (itemExistente) {
@@ -150,7 +154,7 @@ const NuevaVentaScreen = () => {
         cantidad: 1,
         toppings: [],
         sabores: [],
-        siropes: [], // NUEVO
+        siropes: [],
         imagenUrl: producto.imagen_url
       }]);
     }
@@ -199,7 +203,6 @@ const NuevaVentaScreen = () => {
     }));
   };
 
-  // NUEVO - Agregar sirope
   const agregarSirope = (itemId, sirope) => {
     setCarrito(carrito.map(item => {
       if (item.id === itemId) {
@@ -246,7 +249,6 @@ const NuevaVentaScreen = () => {
     }));
   };
 
-  // NUEVO - Remover sirope
   const removerSirope = (itemId, siropeId) => {
     setCarrito(carrito.map(item => {
       if (item.id === itemId) {
@@ -277,18 +279,18 @@ const NuevaVentaScreen = () => {
       precioBase = item.precio_cop;
       precioToppings = item.toppings.reduce((sum, t) => sum + t.precio_cop, 0);
       precioSabores = item.sabores.reduce((sum, s) => sum + s.precio, 0);
-      precioSiropes = item.siropes.reduce((sum, s) => sum + s.precio_cop, 0); // NUEVO
+      precioSiropes = item.siropes.reduce((sum, s) => sum + s.precio_cop, 0);
     } else if (monedaSeleccionada === 'USD') {
       precioBase = item.precio_usd;
       precioToppings = item.toppings.reduce((sum, t) => sum + t.precio_usd, 0);
       precioSabores = item.sabores.reduce((sum, s) => sum + s.precio, 0);
-      precioSiropes = item.siropes.reduce((sum, s) => sum + s.precio_usd, 0); // NUEVO
+      precioSiropes = item.siropes.reduce((sum, s) => sum + s.precio_usd, 0);
     } else {
       // VES = USD × tasa BCV
       precioBase = item.precio_usd * tasas['VES'];
       precioToppings = item.toppings.reduce((sum, t) => sum + (t.precio_usd * tasas['VES']), 0);
       precioSabores = item.sabores.reduce((sum, s) => sum + s.precio, 0);
-      precioSiropes = item.siropes.reduce((sum, s) => sum + (s.precio_usd * tasas['VES']), 0); // NUEVO
+      precioSiropes = item.siropes.reduce((sum, s) => sum + (s.precio_usd * tasas['VES']), 0);
     }
 
     return (precioBase + precioToppings + precioSabores + precioSiropes) * item.cantidad;
@@ -299,7 +301,7 @@ const NuevaVentaScreen = () => {
     const precioBase = item.precio_cop;
     const precioToppings = item.toppings.reduce((sum, t) => sum + t.precio_cop, 0);
     const precioSabores = item.sabores.reduce((sum, s) => sum + s.precio, 0);
-    const precioSiropes = item.siropes.reduce((sum, s) => sum + s.precio_cop, 0); // NUEVO
+    const precioSiropes = item.siropes.reduce((sum, s) => sum + s.precio_cop, 0);
     return total + ((precioBase + precioToppings + precioSabores + precioSiropes) * item.cantidad);
   }, 0);
 
@@ -308,7 +310,7 @@ const NuevaVentaScreen = () => {
     const precioBase = item.precio_usd;
     const precioToppings = item.toppings.reduce((sum, t) => sum + t.precio_usd, 0);
     const precioSabores = item.sabores.reduce((sum, s) => sum + s.precio, 0);
-    const precioSiropes = item.siropes.reduce((sum, s) => sum + s.precio_usd, 0); // NUEVO
+    const precioSiropes = item.siropes.reduce((sum, s) => sum + s.precio_usd, 0);
     return total + ((precioBase + precioToppings + precioSabores + precioSiropes) * item.cantidad);
   }, 0);
 
@@ -328,6 +330,13 @@ const NuevaVentaScreen = () => {
     try {
       setProcesando(true);
 
+      // Obtener id_moneda basado en el código
+      const monedaObj = monedas.find(m => m.codigo_moneda === monedaSeleccionada);
+      if (!monedaObj) {
+        toast.error('Error al obtener información de moneda');
+        return;
+      }
+
       const detalles = carrito.map(item => ({
         id_producto: item.id_producto,
         cantidad: item.cantidad,
@@ -340,7 +349,7 @@ const NuevaVentaScreen = () => {
         sabores: item.sabores.map(s => ({
           id_sabor: s.id_sabor
         })),
-        siropes: item.siropes.map(s => ({ // NUEVO
+        siropes: item.siropes.map(s => ({
           id_sirope: s.id_sirope,
           cantidad: item.cantidad,
           precio_unitario: monedaSeleccionada === 'COP' ? s.precio_cop : s.precio_usd
@@ -348,17 +357,42 @@ const NuevaVentaScreen = () => {
       }));
 
       const ventaData = {
-        nombre_cliente: nombreCliente,
+        nombre_cliente: nombreCliente.trim() || null,
         id_cliente: clienteSeleccionado?.id_cliente || null,
-        codigo_moneda: monedaSeleccionada,
-        tasa_cambio: tasas[monedaSeleccionada] || 1,
-        total: totalMoneda,
-        detalles
+        id_moneda: monedaObj.id_moneda,
+        monto_total: totalMoneda,
+        productos: detalles
       };
 
-      await ventasService.create(ventaData);
+      const response = await ventasService.create(ventaData);
       
       toast.success('Venta procesada correctamente');
+
+      // 🔥 NUEVO - Emitir evento de socket
+      if (connected && response.data?.data) {
+        const ventaCreada = response.data.data;
+        emitirNuevaVenta({
+          id_venta: ventaCreada.id_venta,
+          numero_factura: ventaCreada.numero_factura,
+          nombre_cliente: ventaCreada.nombre_cliente || 'Cliente General',
+          total: ventaCreada.total,
+          codigo_moneda: ventaCreada.codigo_moneda,
+          estado_venta: 'PENDIENTE',
+          fecha_venta: new Date(),
+          cantidad_items: carrito.length
+        });
+        
+        console.log('✅ Evento de nueva venta emitido via socket');
+      }
+
+      // 🔥 NUEVO - Abrir modal con la venta recién creada
+      const ventaCreada = response.data?.data;
+      if (ventaCreada && ventaCreada.id_venta) {
+        setVentaSeleccionada(ventaCreada.id_venta);
+        setShowDetalleModal(true);
+      }
+
+      // Limpiar carrito y recargar datos
       setCarrito([]);
       limpiarCliente();
       loadData();
@@ -387,26 +421,22 @@ const NuevaVentaScreen = () => {
     return p.disponible;
   });
 
-  // Función auxiliar para obtener el precio del topping en la moneda seleccionada
   const getPrecioTopping = (topping) => {
     if (monedaSeleccionada === 'COP') {
       return topping.precio_cop;
     } else if (monedaSeleccionada === 'USD') {
       return topping.precio_usd;
     } else {
-      // VES
       return topping.precio_usd * tasas['VES'];
     }
   };
 
-  // NUEVO - Función para obtener precio del sirope
   const getPrecioSirope = (sirope) => {
     if (monedaSeleccionada === 'COP') {
       return sirope.precio_cop;
     } else if (monedaSeleccionada === 'USD') {
       return sirope.precio_usd;
     } else {
-      // VES
       return sirope.precio_usd * tasas['VES'];
     }
   };
@@ -429,6 +459,11 @@ const NuevaVentaScreen = () => {
           Nueva Venta
         </h2>
         <div className="d-flex gap-2 align-items-center">
+          {/* 🔥 NUEVO - Indicador de conexión socket */}
+          <Badge bg={connected ? 'success' : 'danger'} className="me-2">
+            {connected ? '🟢 Conectado' : '🔴 Desconectado'}
+          </Badge>
+
           <Form.Select
             value={monedaSeleccionada}
             onChange={(e) => setMonedaSeleccionada(e.target.value)}
@@ -535,7 +570,7 @@ const NuevaVentaScreen = () => {
                   {ventasRecientes.map(venta => (
                     <tr key={venta.id_venta}>
                       <td className="small">{formatDateTime(venta.fecha_venta)}</td>
-                      <td>{venta.nombre_cliente}</td>
+                      <td>{venta.nombre_cliente || '-'}</td>
                       <td>
                         <Badge bg="secondary">{venta.codigo_moneda}</Badge>
                       </td>
@@ -544,11 +579,11 @@ const NuevaVentaScreen = () => {
                       </td>
                       <td>
                         <Badge bg={
-                          venta.estado === 'completada' ? 'success' :
-                          venta.estado === 'preparando' ? 'warning' :
-                          venta.estado === 'entregada' ? 'info' : 'secondary'
+                          venta.estado_venta === 'COMPLETADA' ? 'success' :
+                          venta.estado_venta === 'EN_PROCESO' ? 'warning' :
+                          venta.estado_venta === 'PENDIENTE' ? 'info' : 'secondary'
                         }>
-                          {venta.estado}
+                          {venta.estado_venta}
                         </Badge>
                       </td>
                       <td>
@@ -727,7 +762,7 @@ const NuevaVentaScreen = () => {
                         </div>
                       )}
 
-                      {/* NUEVO - Siropes agregados */}
+                      {/* Siropes agregados */}
                       {item.siropes.length > 0 && (
                         <div className="mb-2">
                           <small className="text-muted d-block mb-1">
@@ -798,7 +833,7 @@ const NuevaVentaScreen = () => {
                         ))}
                       </Form.Select>
 
-                      {/* NUEVO - Selector de siropes */}
+                      {/* Selector de siropes */}
                       <Form.Select
                         size="sm"
                         className="mb-2"
