@@ -337,24 +337,51 @@ const NuevaVentaScreen = () => {
         return;
       }
 
-      const detalles = carrito.map(item => ({
-        id_producto: item.id_producto,
-        cantidad: item.cantidad,
-        precio_unitario: monedaSeleccionada === 'COP' ? item.precio_cop : item.precio_usd,
-        toppings: item.toppings.map(t => ({
-          id_topping: t.id_topping,
+      const detalles = carrito.map(item => {
+        // Calcular precio base según moneda
+        const precioProducto = monedaSeleccionada === 'COP' 
+          ? item.precio_cop 
+          : monedaSeleccionada === 'USD'
+          ? item.precio_usd
+          : item.precio_usd * (tasas['VES'] || 1);
+
+        return {
+          id_producto: item.id_producto,
           cantidad: item.cantidad,
-          precio_unitario: monedaSeleccionada === 'COP' ? t.precio_cop : t.precio_usd
-        })),
-        sabores: item.sabores.map(s => ({
-          id_sabor: s.id_sabor
-        })),
-        siropes: item.siropes.map(s => ({
-          id_sirope: s.id_sirope,
-          cantidad: item.cantidad,
-          precio_unitario: monedaSeleccionada === 'COP' ? s.precio_cop : s.precio_usd
-        }))
-      }));
+          precio_unitario: precioProducto,
+          toppings: item.toppings.map(t => {
+            // 🔥 CORREGIDO: Calcular precio del topping según moneda
+            const precioTopping = monedaSeleccionada === 'COP'
+              ? t.precio_cop
+              : monedaSeleccionada === 'USD'
+              ? t.precio_usd
+              : t.precio_usd * (tasas['VES'] || 1);
+
+            return {
+              id_topping: t.id_topping,
+              cantidad: item.cantidad,
+              precio_unitario: precioTopping
+            };
+          }),
+          sabores: item.sabores.map(s => ({
+            id_sabor: s.id_sabor
+          })),
+          siropes: item.siropes.map(s => {
+            // 🔥 CORREGIDO: Calcular precio del sirope según moneda
+            const precioSirope = monedaSeleccionada === 'COP'
+              ? s.precio_cop
+              : monedaSeleccionada === 'USD'
+              ? s.precio_usd
+              : s.precio_usd * (tasas['VES'] || 1);
+
+            return {
+              id_sirope: s.id_sirope,
+              cantidad: item.cantidad,
+              precio_unitario: precioSirope
+            };
+          })
+        };
+      });
 
       const ventaData = {
         nombre_cliente: nombreCliente.trim() || null,
