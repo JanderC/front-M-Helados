@@ -75,6 +75,144 @@ const DisplayScreen = () => {
   const pedidosPendientes = pedidos.filter(p => p.estado_venta === 'PENDIENTE');
   const pedidosEnProceso = pedidos.filter(p => p.estado_venta === 'EN_PROCESO');
 
+  // 🔥 NUEVO - Componente para renderizar un pedido
+  const PedidoCard = ({ pedido, bgColor, borderColor, estadoTexto, estadoBadgeBg }) => (
+    <Card className={`display-pedido-card border-${borderColor} shadow`}>
+      <Card.Body className="p-4">
+        <div className="d-flex justify-content-between align-items-start mb-3">
+          <div>
+            <h2 className="display-pedido-numero mb-2">
+              #{pedido.numero_factura || pedido.id_venta}
+            </h2>
+            <div className="display-pedido-fecha">
+              <i className="bi bi-clock me-2"></i>
+              {formatDateTime(pedido.fecha_venta || pedido.created_at)}
+            </div>
+            {pedido.nombre_cliente && (
+              <div className="mt-2 text-muted">
+                <i className="bi bi-person me-2"></i>
+                <strong>{pedido.nombre_cliente}</strong>
+              </div>
+            )}
+          </div>
+          <Badge bg={estadoBadgeBg} className="display-estado-badge px-4 py-3">
+            {estadoTexto}
+          </Badge>
+        </div>
+
+        <div className="display-pedido-total mb-4">
+          <small className="d-block opacity-75 mb-1">Total</small>
+          <span className="fw-bold">
+            {formatCurrency(pedido.total || pedido.monto_total, pedido.codigo_moneda || 'USD')}
+          </span>
+        </div>
+
+        <div className="display-pedido-items">
+          {(pedido.items || pedido.detalles || []).map((item, idx) => (
+            <div key={idx} className="display-item mb-3 p-3 bg-light rounded">
+              {/* Header del item con imagen y nombre */}
+              <div className="d-flex align-items-start mb-2">
+                {item.imagen_url ? (
+                  <img
+                    src={item.imagen_url}
+                    alt={item.nombre_producto || item.nombre}
+                    className="display-item-image rounded me-3"
+                    style={{ width: '80px', height: '80px', objectFit: 'cover' }}
+                  />
+                ) : (
+                  <div className="display-item-image-placeholder rounded me-3 d-flex align-items-center justify-content-center bg-secondary" style={{ width: '80px', height: '80px' }}>
+                    <i className="bi bi-image text-white fs-3"></i>
+                  </div>
+                )}
+                <div className="flex-grow-1">
+                  <div className="display-item-nombre fw-bold mb-2 fs-5">
+                    {item.nombre_producto || item.nombre}
+                  </div>
+                  <div className="display-item-cantidad">
+                    <Badge bg="dark" className="px-3 py-2">
+                      <i className="bi bi-box me-2"></i>
+                      Cantidad: x{item.cantidad}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+
+              {/* 🔥 NUEVO - Sabores */}
+              {item.sabores && item.sabores.length > 0 && (
+                <div className="mt-3 p-2 bg-white rounded">
+                  <div className="d-flex align-items-center mb-2">
+                    <i className="bi bi-snow2 text-info me-2 fs-5"></i>
+                    <strong className="text-info">Sabores:</strong>
+                  </div>
+                  <div className="d-flex flex-wrap gap-2">
+                    {item.sabores.map((sabor, sIdx) => (
+                      <Badge 
+                        key={sIdx} 
+                        bg="info" 
+                        className="px-3 py-2"
+                        style={{ fontSize: '0.9rem' }}
+                      >
+                        <i className="bi bi-check-circle me-1"></i>
+                        {sabor.nombre_sabor || sabor.nombre}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 🔥 NUEVO - Toppings */}
+              {item.toppings && item.toppings.length > 0 && (
+                <div className="mt-3 p-2 bg-white rounded">
+                  <div className="d-flex align-items-center mb-2">
+                    <i className="bi bi-stars text-secondary me-2 fs-5"></i>
+                    <strong className="text-secondary">Toppings:</strong>
+                  </div>
+                  <div className="d-flex flex-wrap gap-2">
+                    {item.toppings.map((topping, tIdx) => (
+                      <Badge 
+                        key={tIdx} 
+                        bg="secondary" 
+                        className="px-3 py-2"
+                        style={{ fontSize: '0.9rem' }}
+                      >
+                        <i className="bi bi-plus-circle me-1"></i>
+                        {topping.nombre_topping || topping.nombre}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 🔥 NUEVO - Siropes */}
+              {item.siropes && item.siropes.length > 0 && (
+                <div className="mt-3 p-2 bg-white rounded">
+                  <div className="d-flex align-items-center mb-2">
+                    <i className="bi bi-droplet-half text-warning me-2 fs-5"></i>
+                    <strong className="text-warning">Siropes:</strong>
+                  </div>
+                  <div className="d-flex flex-wrap gap-2">
+                    {item.siropes.map((sirope, siIdx) => (
+                      <Badge 
+                        key={siIdx} 
+                        bg="warning" 
+                        text="dark"
+                        className="px-3 py-2"
+                        style={{ fontSize: '0.9rem' }}
+                      >
+                        <i className="bi bi-droplet-fill me-1"></i>
+                        {sirope.nombre_sirope || sirope.nombre}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </Card.Body>
+    </Card>
+  );
+
   return (
     <div className="display-screen-container">
       {/* Header */}
@@ -82,7 +220,7 @@ const DisplayScreen = () => {
         <div className="container-fluid">
           <div className="d-flex justify-content-between align-items-center py-3">
             <h1 className="display-title mb-0">
-              🍦 Pedidos en Tiempo Real
+              🦴 Pedidos en Tiempo Real
             </h1>
             <div className="d-flex align-items-center gap-4">
               <Badge 
@@ -134,67 +272,13 @@ const DisplayScreen = () => {
                 ) : (
                   <div className="d-flex flex-column gap-4">
                     {pedidosPendientes.map((pedido) => (
-                      <Card key={pedido.id_venta} className="display-pedido-card border-warning shadow">
-                        <Card.Body className="p-4">
-                          <div className="d-flex justify-content-between align-items-start mb-3">
-                            <div>
-                              <h2 className="display-pedido-numero mb-2">
-                                #{pedido.numero_factura || pedido.id_venta}
-                              </h2>
-                              <div className="display-pedido-fecha">
-                                <i className="bi bi-clock me-2"></i>
-                                {formatDateTime(pedido.fecha_venta || pedido.created_at)}
-                              </div>
-                              {/* Mostrar nombre del cliente (directo de tabla ventas) */}
-                              {pedido.nombre_cliente && (
-                                <div className="mt-2 text-muted">
-                                  <i className="bi bi-person me-2"></i>
-                                  <strong>{pedido.nombre_cliente}</strong>
-                                </div>
-                              )}
-                            </div>
-                            <Badge bg="warning" text="dark" className="display-estado-badge px-4 py-3">
-                              PENDIENTE
-                            </Badge>
-                          </div>
-
-                          <div className="display-pedido-total mb-4">
-                            <small className="d-block opacity-75 mb-1">Total</small>
-                            <span className="fw-bold">
-                              {formatCurrency(pedido.total || pedido.monto_total, pedido.codigo_moneda || 'USD')}
-                            </span>
-                          </div>
-
-                          <div className="display-pedido-items">
-                            {(pedido.items || pedido.detalles || []).map((item, idx) => (
-                              <div key={idx} className="display-item d-flex align-items-center mb-3 p-3 bg-light rounded">
-                                {item.imagen_url ? (
-                                  <img
-                                    src={item.imagen_url}
-                                    alt={item.nombre_producto || item.nombre}
-                                    className="display-item-image rounded me-3"
-                                  />
-                                ) : (
-                                  <div className="display-item-image-placeholder rounded me-3">
-                                    <i className="bi bi-image"></i>
-                                  </div>
-                                )}
-                                <div className="flex-grow-1">
-                                  <div className="display-item-nombre fw-bold mb-1">
-                                    {item.nombre_producto || item.nombre}
-                                  </div>
-                                  <div className="display-item-cantidad">
-                                    <Badge bg="dark" className="px-3 py-2">
-                                      <i className="bi bi-box me-2"></i>
-                                      x{item.cantidad}
-                                    </Badge>
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </Card.Body>
-                      </Card>
+                      <PedidoCard 
+                        key={pedido.id_venta}
+                        pedido={pedido}
+                        borderColor="warning"
+                        estadoTexto="PENDIENTE"
+                        estadoBadgeBg="warning"
+                      />
                     ))}
                   </div>
                 )}
@@ -225,67 +309,13 @@ const DisplayScreen = () => {
                 ) : (
                   <div className="d-flex flex-column gap-4">
                     {pedidosEnProceso.map((pedido) => (
-                      <Card key={pedido.id_venta} className="display-pedido-card border-info shadow">
-                        <Card.Body className="p-4">
-                          <div className="d-flex justify-content-between align-items-start mb-3">
-                            <div>
-                              <h2 className="display-pedido-numero mb-2">
-                                #{pedido.numero_factura || pedido.id_venta}
-                              </h2>
-                              <div className="display-pedido-fecha">
-                                <i className="bi bi-clock me-2"></i>
-                                {formatDateTime(pedido.fecha_venta || pedido.created_at)}
-                              </div>
-                              {/* Mostrar nombre del cliente (directo de tabla ventas) */}
-                              {pedido.nombre_cliente && (
-                                <div className="mt-2 text-muted">
-                                  <i className="bi bi-person me-2"></i>
-                                  <strong>{pedido.nombre_cliente}</strong>
-                                </div>
-                              )}
-                            </div>
-                            <Badge bg="info" className="display-estado-badge px-4 py-3">
-                              EN PROCESO
-                            </Badge>
-                          </div>
-
-                          <div className="display-pedido-total mb-4">
-                            <small className="d-block opacity-75 mb-1">Total</small>
-                            <span className="fw-bold">
-                              {formatCurrency(pedido.total || pedido.monto_total, pedido.codigo_moneda || 'USD')}
-                            </span>
-                          </div>
-
-                          <div className="display-pedido-items">
-                            {(pedido.items || pedido.detalles || []).map((item, idx) => (
-                              <div key={idx} className="display-item d-flex align-items-center mb-3 p-3 bg-light rounded">
-                                {item.imagen_url ? (
-                                  <img
-                                    src={item.imagen_url}
-                                    alt={item.nombre_producto || item.nombre}
-                                    className="display-item-image rounded me-3"
-                                  />
-                                ) : (
-                                  <div className="display-item-image-placeholder rounded me-3">
-                                    <i className="bi bi-image"></i>
-                                  </div>
-                                )}
-                                <div className="flex-grow-1">
-                                  <div className="display-item-nombre fw-bold mb-1">
-                                    {item.nombre_producto || item.nombre}
-                                  </div>
-                                  <div className="display-item-cantidad">
-                                    <Badge bg="dark" className="px-3 py-2">
-                                      <i className="bi bi-box me-2"></i>
-                                      x{item.cantidad}
-                                    </Badge>
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </Card.Body>
-                      </Card>
+                      <PedidoCard 
+                        key={pedido.id_venta}
+                        pedido={pedido}
+                        borderColor="info"
+                        estadoTexto="EN PROCESO"
+                        estadoBadgeBg="info"
+                      />
                     ))}
                   </div>
                 )}

@@ -19,11 +19,9 @@ const PedidosScreen = () => {
 
   useEffect(() => {
     if (socket && connected) {
-      console.log('👂 Escuchando eventos de socket...');
 
       // Escuchar nuevo pedido
       socket.on('pedido_nuevo', (data) => {
-        console.log('📦 Nuevo pedido recibido:', data);
         toast.info(`¡Nuevo pedido #${data.venta.numero_factura || data.venta.id_venta}!`, {
           autoClose: 5000,
           position: 'top-right'
