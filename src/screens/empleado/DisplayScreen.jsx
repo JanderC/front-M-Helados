@@ -177,6 +177,11 @@ const DisplayScreen = () => {
                       >
                         <i className="bi bi-plus-circle me-1"></i>
                         {topping.nombre_topping || topping.nombre}
+                        {topping.precio_adicional && (
+                          <span className="ms-2">
+                            (+{formatCurrency(parseFloat(topping.precio_adicional), pedido.codigo_moneda || 'USD')})
+                          </span>
+                        )}
                       </Badge>
                     ))}
                   </div>
