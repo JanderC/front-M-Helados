@@ -1,16 +1,26 @@
-import { useState, useEffect } from 'react';
-import { Row, Col, Card, Button, Form, Badge, ListGroup, Table, InputGroup } from 'react-bootstrap';
-import { productosService } from '../../api/services/productosService';
-import { toppingsService } from '../../api/services/toppingsService';
-import { saboresService } from '../../api/services/saboresService';
-import { siropesService } from '../../api/services/siropesService';
-import { ventasService } from '../../api/services/ventasService';
-import { monedasService } from '../../api/services/monedasService';
-import { clientesService } from '../../api/services/clientesService';
-import { toast } from 'react-toastify';
-import { formatCurrency, formatDateTime } from '../../utils/formatters';
-import DetalleVentaModal from '../../components/ventas/DetalleVentaModal';
-import { useSocket } from '../../context/SocketContext'; // 🔥 NUEVO
+import { useState, useEffect } from "react";
+import {
+  Row,
+  Col,
+  Card,
+  Button,
+  Form,
+  Badge,
+  ListGroup,
+  Table,
+  InputGroup,
+} from "react-bootstrap";
+import { productosService } from "../../api/services/productosService";
+import { toppingsService } from "../../api/services/toppingsService";
+import { saboresService } from "../../api/services/saboresService";
+import { siropesService } from "../../api/services/siropesService";
+import { ventasService } from "../../api/services/ventasService";
+import { monedasService } from "../../api/services/monedasService";
+import { clientesService } from "../../api/services/clientesService";
+import { toast } from "react-toastify";
+import { formatCurrency, formatDateTime } from "../../utils/formatters";
+import DetalleVentaModal from "../../components/ventas/DetalleVentaModal";
+import { useSocket } from "../../context/SocketContext";
 
 const NuevaVentaScreen = () => {
   const [productos, setProductos] = useState([]);
@@ -20,23 +30,23 @@ const NuevaVentaScreen = () => {
   const [tasas, setTasas] = useState({ USD: 1, VES: 36, COP: 4000 });
   const [monedas, setMonedas] = useState([]);
   const [carrito, setCarrito] = useState([]);
-  const [monedaSeleccionada, setMonedaSeleccionada] = useState('COP');
+  const [monedaSeleccionada, setMonedaSeleccionada] = useState("COP");
   const [loading, setLoading] = useState(true);
   const [procesando, setProcesando] = useState(false);
-  const [filtroCategoria, setFiltroCategoria] = useState('');
+  const [filtroCategoria, setFiltroCategoria] = useState("");
   const [categorias, setCategorias] = useState([]);
   const [ventasRecientes, setVentasRecientes] = useState([]);
   const [showDetalleModal, setShowDetalleModal] = useState(false);
   const [ventaSeleccionada, setVentaSeleccionada] = useState(null);
-  
+
   // Estados para cliente
-  const [nombreCliente, setNombreCliente] = useState('');
+  const [nombreCliente, setNombreCliente] = useState("");
   const [clientesEncontrados, setClientesEncontrados] = useState([]);
   const [buscandoCliente, setBuscandoCliente] = useState(false);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
   const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
 
-  // 🔥 NUEVO - Hook de Socket
+  // Hook de Socket
   const { connected, emitirNuevaVenta } = useSocket();
 
   useEffect(() => {
@@ -60,38 +70,53 @@ const NuevaVentaScreen = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [prodResponse, toppResponse, saboresResponse, siropesResponse, tasasResponse, catResponse, ventasResponse] = await Promise.all([
+      const [
+        prodResponse,
+        toppResponse,
+        saboresResponse,
+        siropesResponse,
+        tasasResponse,
+        catResponse,
+        ventasResponse,
+      ] = await Promise.all([
         productosService.getAll(),
         toppingsService.getAll(),
-        saboresService.getAll({ disponible: 'true' }),
-        siropesService.getAll({ disponible: 'true' }),
+        saboresService.getAll({ disponible: "true" }),
+        siropesService.getAll({ disponible: "true" }),
         monedasService.getTasas(),
         productosService.getCategorias(),
-        ventasService.getAll({ limit: 10 })
+        ventasService.getAll({ limit: 10 }),
       ]);
-      
+
       setProductos(prodResponse.data?.data || prodResponse.data || []);
       setToppings(toppResponse.data?.data || toppResponse.data || []);
       setSabores(saboresResponse.data?.data || saboresResponse.data || []);
       setSiropes(siropesResponse.data?.data || siropesResponse.data || []);
-      
+
       const monedasData = tasasResponse.data?.data || tasasResponse.data;
       if (Array.isArray(monedasData)) {
         setMonedas(monedasData);
         const tasasObj = {};
-        monedasData.forEach(m => {
+        monedasData.forEach((m) => {
           tasasObj[m.codigo_moneda] = parseFloat(m.tasa_cambio_usd);
         });
         setTasas(tasasObj);
       } else {
         setTasas(monedasData || { USD: 1, VES: 36, COP: 4000 });
       }
-      
+
       setCategorias(catResponse.data?.data || catResponse.data || []);
       setVentasRecientes(ventasResponse.data?.data || ventasResponse.data || []);
+      
+      console.log('✅ Datos cargados:', {
+        productos: prodResponse.data?.data?.length || 0,
+        toppings: toppResponse.data?.data?.length || 0,
+        sabores: saboresResponse.data?.data?.length || 0,
+        siropes: siropesResponse.data?.data?.length || 0
+      });
     } catch (error) {
-      console.error('Error al cargar datos:', error);
-      toast.error('Error al cargar datos');
+      console.error("Error al cargar datos:", error);
+      toast.error("Error al cargar datos");
     } finally {
       setLoading(false);
     }
@@ -105,7 +130,7 @@ const NuevaVentaScreen = () => {
       setClientesEncontrados(clientes);
       setMostrarSugerencias(clientes.length > 0);
     } catch (error) {
-      console.error('Error al buscar clientes:', error);
+      console.error("Error al buscar clientes:", error);
     } finally {
       setBuscandoCliente(false);
     }
@@ -120,266 +145,313 @@ const NuevaVentaScreen = () => {
 
   const limpiarCliente = () => {
     setClienteSeleccionado(null);
-    setNombreCliente('');
+    setNombreCliente("");
     setClientesEncontrados([]);
     setMostrarSugerencias(false);
   };
 
   const agregarAlCarrito = (producto) => {
     if (!producto.disponible) {
-      toast.error('Producto no disponible');
+      toast.error("Producto no disponible");
       return;
     }
 
-    const itemExistente = carrito.find(item => 
-      item.id_producto === producto.id_producto && 
-      item.toppings.length === 0 && 
-      item.sabores.length === 0 &&
-      item.siropes.length === 0
+    const itemExistente = carrito.find(
+      (item) =>
+        item.id_producto === producto.id_producto &&
+        item.toppings.length === 0 &&
+        item.sabores.length === 0 &&
+        item.siropes.length === 0
     );
 
     if (itemExistente) {
-      setCarrito(carrito.map(item =>
-        item.id === itemExistente.id
-          ? { ...item, cantidad: item.cantidad + 1 }
-          : item
-      ));
+      setCarrito(
+        carrito.map((item) =>
+          item.id === itemExistente.id
+            ? { ...item, cantidad: item.cantidad + 1 }
+            : item
+        )
+      );
     } else {
-      setCarrito([...carrito, {
-        id: Date.now(),
-        id_producto: producto.id_producto,
-        nombre: producto.nombre_producto,
-        precio_cop: parseFloat(producto.precio_base),
-        precio_usd: parseFloat(producto.precio_usd || 0),
-        cantidad: 1,
-        toppings: [],
-        sabores: [],
-        siropes: [],
-        imagenUrl: producto.imagen_url
-      }]);
+      setCarrito([
+        ...carrito,
+        {
+          id: Date.now(),
+          id_producto: producto.id_producto,
+          nombre: producto.nombre_producto,
+          precio_cop: parseFloat(producto.precio_base),
+          precio_usd: parseFloat(producto.precio_usd || 0),
+          cantidad: 1,
+          toppings: [],
+          sabores: [],
+          siropes: [],
+          imagenUrl: producto.imagen_url,
+        },
+      ]);
     }
   };
 
   const agregarTopping = (itemId, topping) => {
-    setCarrito(carrito.map(item => {
-      if (item.id === itemId) {
-        const toppingYaAgregado = item.toppings.find(t => t.id_topping === topping.id_topping);
-        if (toppingYaAgregado) {
-          toast.warning('Este topping ya fue agregado');
-          return item;
+    setCarrito(
+      carrito.map((item) => {
+        if (item.id === itemId) {
+          const toppingYaAgregado = item.toppings.find(
+            (t) => t.id_topping === topping.id_topping
+          );
+          if (toppingYaAgregado) {
+            toast.warning("Este topping ya fue agregado");
+            return item;
+          }
+          return {
+            ...item,
+            toppings: [
+              ...item.toppings,
+              {
+                id_topping: topping.id_topping,
+                nombre: topping.nombre_topping,
+                precio_cop: parseFloat(topping.precio_adicional_cop || 0),
+                precio_usd: parseFloat(topping.precio_adicional_usd || 0),
+              },
+            ],
+          };
         }
-        return {
-          ...item,
-          toppings: [...item.toppings, {
-            id_topping: topping.id_topping,
-            nombre: topping.nombre_topping,
-            precio_cop: parseFloat(topping.precio_adicional_cop || 0),
-            precio_usd: parseFloat(topping.precio_adicional_usd || 0)
-          }]
-        };
-      }
-      return item;
-    }));
+        return item;
+      })
+    );
   };
 
   const agregarSabor = (itemId, sabor) => {
-    setCarrito(carrito.map(item => {
-      if (item.id === itemId) {
-        const saborYaAgregado = item.sabores.find(s => s.id_sabor === sabor.id_sabor);
-        if (saborYaAgregado) {
-          toast.warning('Este sabor ya fue agregado');
-          return item;
+    setCarrito(
+      carrito.map((item) => {
+        if (item.id === itemId) {
+          const saborYaAgregado = item.sabores.find(
+            (s) => s.id_sabor === sabor.id_sabor
+          );
+          if (saborYaAgregado) {
+            toast.warning("Este sabor ya fue agregado");
+            return item;
+          }
+          return {
+            ...item,
+            sabores: [
+              ...item.sabores,
+              {
+                id_sabor: sabor.id_sabor,
+                nombre: sabor.nombre_sabor,
+                precio_cop: parseFloat(sabor.precio_adicional_cop || sabor.precio_adicional || 0),
+                precio_usd: parseFloat(sabor.precio_adicional_usd || 0),
+              },
+            ],
+          };
         }
-        return {
-          ...item,
-          sabores: [...item.sabores, {
-            id_sabor: sabor.id_sabor,
-            nombre: sabor.nombre_sabor,
-            precio: parseFloat(sabor.precio_adicional || 0)
-          }]
-        };
-      }
-      return item;
-    }));
+        return item;
+      })
+    );
   };
 
+  // 🔥 CORREGIDO - agregarSirope
   const agregarSirope = (itemId, sirope) => {
-    setCarrito(carrito.map(item => {
-      if (item.id === itemId) {
-        const siropeYaAgregado = item.siropes.find(s => s.id_sirope === sirope.id_sirope);
-        if (siropeYaAgregado) {
-          toast.warning('Este sirope ya fue agregado');
-          return item;
+    setCarrito(
+      carrito.map((item) => {
+        if (item.id === itemId) {
+          const siropeYaAgregado = item.siropes.find(
+            (s) => s.id_sirope === sirope.id_sirope
+          );
+          if (siropeYaAgregado) {
+            toast.warning("Este sirope ya fue agregado");
+            return item;
+          }
+          return {
+            ...item,
+            siropes: [
+              ...item.siropes,
+              {
+                id_sirope: sirope.id_sirope,
+                nombre: sirope.nombre_sirope,
+                precio_cop: parseFloat(sirope.precio_adicional_cop || 0),
+                precio_usd: parseFloat(sirope.precio_adicional_usd || 0),
+              },
+            ],
+          };
         }
-        return {
-          ...item,
-          siropes: [...item.siropes, {
-            id_sirope: sirope.id_sirope,
-            nombre: sirope.nombre_sirope,
-            precio_cop: parseFloat(sirope.precio_adicional_cop || 0),
-            precio_usd: parseFloat(sirope.precio_adicional_usd || 0)
-          }]
-        };
-      }
-      return item;
-    }));
+        return item;
+      })
+    );
   };
 
   const removerTopping = (itemId, toppingId) => {
-    setCarrito(carrito.map(item => {
-      if (item.id === itemId) {
-        return {
-          ...item,
-          toppings: item.toppings.filter(t => t.id_topping !== toppingId)
-        };
-      }
-      return item;
-    }));
+    setCarrito(
+      carrito.map((item) => {
+        if (item.id === itemId) {
+          return {
+            ...item,
+            toppings: item.toppings.filter((t) => t.id_topping !== toppingId),
+          };
+        }
+        return item;
+      })
+    );
   };
 
   const removerSabor = (itemId, saborId) => {
-    setCarrito(carrito.map(item => {
-      if (item.id === itemId) {
-        return {
-          ...item,
-          sabores: item.sabores.filter(s => s.id_sabor !== saborId)
-        };
-      }
-      return item;
-    }));
+    setCarrito(
+      carrito.map((item) => {
+        if (item.id === itemId) {
+          return {
+            ...item,
+            sabores: item.sabores.filter((s) => s.id_sabor !== saborId),
+          };
+        }
+        return item;
+      })
+    );
   };
 
   const removerSirope = (itemId, siropeId) => {
-    setCarrito(carrito.map(item => {
-      if (item.id === itemId) {
-        return {
-          ...item,
-          siropes: item.siropes.filter(s => s.id_sirope !== siropeId)
-        };
-      }
-      return item;
-    }));
+    setCarrito(
+      carrito.map((item) => {
+        if (item.id === itemId) {
+          return {
+            ...item,
+            siropes: item.siropes.filter((s) => s.id_sirope !== siropeId),
+          };
+        }
+        return item;
+      })
+    );
   };
 
   const actualizarCantidad = (itemId, nuevaCantidad) => {
     if (nuevaCantidad < 1) return;
-    setCarrito(carrito.map(item =>
-      item.id === itemId ? { ...item, cantidad: nuevaCantidad } : item
-    ));
+    setCarrito(
+      carrito.map((item) =>
+        item.id === itemId ? { ...item, cantidad: nuevaCantidad } : item
+      )
+    );
   };
 
   const removerDelCarrito = (itemId) => {
-    setCarrito(carrito.filter(item => item.id !== itemId));
+    setCarrito(carrito.filter((item) => item.id !== itemId));
   };
 
+  // 🔥 CORREGIDO - calcularSubtotal
   const calcularSubtotal = (item) => {
     let precioBase, precioToppings, precioSabores, precioSiropes;
 
-    if (monedaSeleccionada === 'COP') {
+    if (monedaSeleccionada === "COP") {
       precioBase = item.precio_cop;
       precioToppings = item.toppings.reduce((sum, t) => sum + t.precio_cop, 0);
-      precioSabores = item.sabores.reduce((sum, s) => sum + s.precio, 0);
+      precioSabores = item.sabores.reduce((sum, s) => sum + s.precio_cop, 0);
       precioSiropes = item.siropes.reduce((sum, s) => sum + s.precio_cop, 0);
-    } else if (monedaSeleccionada === 'USD') {
+    } else if (monedaSeleccionada === "USD") {
       precioBase = item.precio_usd;
       precioToppings = item.toppings.reduce((sum, t) => sum + t.precio_usd, 0);
-      precioSabores = item.sabores.reduce((sum, s) => sum + s.precio, 0);
+      precioSabores = item.sabores.reduce((sum, s) => sum + s.precio_usd, 0);
       precioSiropes = item.siropes.reduce((sum, s) => sum + s.precio_usd, 0);
     } else {
       // VES = USD × tasa BCV
-      precioBase = item.precio_usd * tasas['VES'];
-      precioToppings = item.toppings.reduce((sum, t) => sum + (t.precio_usd * tasas['VES']), 0);
-      precioSabores = item.sabores.reduce((sum, s) => sum + s.precio, 0);
-      precioSiropes = item.siropes.reduce((sum, s) => sum + (s.precio_usd * tasas['VES']), 0);
+      precioBase = item.precio_usd * tasas["VES"];
+      precioToppings = item.toppings.reduce(
+        (sum, t) => sum + t.precio_usd * tasas["VES"],
+        0
+      );
+      precioSabores = item.sabores.reduce(
+        (sum, s) => sum + s.precio_usd * tasas["VES"],
+        0
+      );
+      precioSiropes = item.siropes.reduce(
+        (sum, s) => sum + s.precio_usd * tasas["VES"],
+        0
+      );
     }
 
-    return (precioBase + precioToppings + precioSabores + precioSiropes) * item.cantidad;
+    return (
+      (precioBase + precioToppings + precioSabores + precioSiropes) *
+      item.cantidad
+    );
   };
 
-  // Calcular total en COP
+  // 🔥 CORREGIDO - totalCOP
   const totalCOP = carrito.reduce((total, item) => {
     const precioBase = item.precio_cop;
     const precioToppings = item.toppings.reduce((sum, t) => sum + t.precio_cop, 0);
-    const precioSabores = item.sabores.reduce((sum, s) => sum + s.precio, 0);
+    const precioSabores = item.sabores.reduce((sum, s) => sum + s.precio_cop, 0);
     const precioSiropes = item.siropes.reduce((sum, s) => sum + s.precio_cop, 0);
-    return total + ((precioBase + precioToppings + precioSabores + precioSiropes) * item.cantidad);
+    return (
+      total +
+      (precioBase + precioToppings + precioSabores + precioSiropes) * item.cantidad
+    );
   }, 0);
 
-  // Calcular total en USD
+  // 🔥 CORREGIDO - totalUSD
   const totalUSD = carrito.reduce((total, item) => {
     const precioBase = item.precio_usd;
     const precioToppings = item.toppings.reduce((sum, t) => sum + t.precio_usd, 0);
-    const precioSabores = item.sabores.reduce((sum, s) => sum + s.precio, 0);
+    const precioSabores = item.sabores.reduce((sum, s) => sum + s.precio_usd, 0);
     const precioSiropes = item.siropes.reduce((sum, s) => sum + s.precio_usd, 0);
-    return total + ((precioBase + precioToppings + precioSabores + precioSiropes) * item.cantidad);
+    return (
+      total +
+      (precioBase + precioToppings + precioSabores + precioSiropes) * item.cantidad
+    );
   }, 0);
 
   // Calcular total en la moneda seleccionada
-  const totalMoneda = monedaSeleccionada === 'COP' 
-    ? totalCOP 
-    : monedaSeleccionada === 'USD'
-    ? totalUSD
-    : totalUSD * (tasas['VES'] || 1);
+  const totalMoneda =
+    monedaSeleccionada === "COP"
+      ? totalCOP
+      : monedaSeleccionada === "USD"
+      ? totalUSD
+      : totalUSD * (tasas["VES"] || 1);
+
+  // 🔥 CORREGIDO - Función helper para obtener precio según moneda
+  const getPrecioItem = (item, campo_cop, campo_usd) => {
+    if (monedaSeleccionada === "COP") {
+      return item[campo_cop] || 0;
+    } else if (monedaSeleccionada === "USD") {
+      return item[campo_usd] || 0;
+    } else {
+      return (item[campo_usd] || 0) * tasas["VES"];
+    }
+  };
 
   const procesarVenta = async () => {
     if (carrito.length === 0) {
-      toast.warning('El carrito está vacío');
+      toast.warning("El carrito está vacío");
       return;
     }
 
     try {
       setProcesando(true);
 
-      // Obtener id_moneda basado en el código
-      const monedaObj = monedas.find(m => m.codigo_moneda === monedaSeleccionada);
+      const monedaObj = monedas.find((m) => m.codigo_moneda === monedaSeleccionada);
       if (!monedaObj) {
-        toast.error('Error al obtener información de moneda');
+        toast.error("Error al obtener información de moneda");
         return;
       }
 
-      const detalles = carrito.map(item => {
-        // Calcular precio base según moneda
-        const precioProducto = monedaSeleccionada === 'COP' 
-          ? item.precio_cop 
-          : monedaSeleccionada === 'USD'
-          ? item.precio_usd
-          : item.precio_usd * (tasas['VES'] || 1);
+      // 🔥 CORREGIDO - Construcción de detalles con precios correctos
+      const detalles = carrito.map((item) => {
+        const precioProducto = getPrecioItem(item, 'precio_cop', 'precio_usd');
 
         return {
           id_producto: item.id_producto,
           cantidad: item.cantidad,
           precio_unitario: precioProducto,
-          toppings: item.toppings.map(t => {
-            // 🔥 CORREGIDO: Calcular precio del topping según moneda
-            const precioTopping = monedaSeleccionada === 'COP'
-              ? t.precio_cop
-              : monedaSeleccionada === 'USD'
-              ? t.precio_usd
-              : t.precio_usd * (tasas['VES'] || 1);
-
-            return {
-              id_topping: t.id_topping,
-              cantidad: item.cantidad,
-              precio_unitario: precioTopping
-            };
-          }),
-          sabores: item.sabores.map(s => ({
-            id_sabor: s.id_sabor
+          toppings: item.toppings.map((t) => ({
+            id_topping: t.id_topping,
+            cantidad: item.cantidad,
+            precio_unitario: getPrecioItem(t, 'precio_cop', 'precio_usd'),
           })),
-          siropes: item.siropes.map(s => {
-            // 🔥 CORREGIDO: Calcular precio del sirope según moneda
-            const precioSirope = monedaSeleccionada === 'COP'
-              ? s.precio_cop
-              : monedaSeleccionada === 'USD'
-              ? s.precio_usd
-              : s.precio_usd * (tasas['VES'] || 1);
-
-            return {
-              id_sirope: s.id_sirope,
-              cantidad: item.cantidad,
-              precio_unitario: precioSirope
-            };
-          })
+          sabores: item.sabores.map((s) => ({
+            id_sabor: s.id_sabor,
+            cantidad: item.cantidad,
+            precio_unitario: getPrecioItem(s, 'precio_cop', 'precio_usd'),
+          })),
+          siropes: item.siropes.map((s) => ({
+            id_sirope: s.id_sirope,
+            cantidad: item.cantidad,
+            precio_unitario: getPrecioItem(s, 'precio_cop', 'precio_usd'),
+          })),
         };
       });
 
@@ -388,31 +460,38 @@ const NuevaVentaScreen = () => {
         id_cliente: clienteSeleccionado?.id_cliente || null,
         id_moneda: monedaObj.id_moneda,
         monto_total: totalMoneda,
-        productos: detalles
+        productos: detalles,
       };
 
-      const response = await ventasService.create(ventaData);
-      
-      toast.success('Venta procesada correctamente');
+      console.log('📤 Enviando venta:', {
+        moneda: monedaSeleccionada,
+        total: totalMoneda,
+        productos: detalles.length,
+        siropes_totales: detalles.reduce((sum, d) => sum + d.siropes.length, 0)
+      });
 
-      // 🔥 NUEVO - Emitir evento de socket
+      const response = await ventasService.create(ventaData);
+
+      toast.success("Venta procesada correctamente");
+
+      // Emitir evento de socket
       if (connected && response.data?.data) {
         const ventaCreada = response.data.data;
         emitirNuevaVenta({
           id_venta: ventaCreada.id_venta,
           numero_factura: ventaCreada.numero_factura,
-          nombre_cliente: ventaCreada.nombre_cliente || 'Cliente General',
+          nombre_cliente: ventaCreada.nombre_cliente || "Cliente General",
           total: ventaCreada.total,
-          codigo_moneda: ventaCreada.codigo_moneda,
-          estado_venta: 'PENDIENTE',
+          codigo_moneda: ventaCreada.codigo_moneda || monedaSeleccionada,
+          estado_venta: "PENDIENTE",
           fecha_venta: new Date(),
-          cantidad_items: carrito.length
+          cantidad_items: carrito.length,
         });
-        
-        console.log('✅ Evento de nueva venta emitido via socket');
+
+        console.log("✅ Evento de nueva venta emitido via socket");
       }
 
-      // 🔥 NUEVO - Abrir modal con la venta recién creada
+      // Abrir modal con la venta recién creada
       const ventaCreada = response.data?.data;
       if (ventaCreada && ventaCreada.id_venta) {
         setVentaSeleccionada(ventaCreada.id_venta);
@@ -423,10 +502,9 @@ const NuevaVentaScreen = () => {
       setCarrito([]);
       limpiarCliente();
       loadData();
-
     } catch (error) {
-      console.error('Error al procesar venta:', error);
-      toast.error(error.response?.data?.message || 'Error al procesar venta');
+      console.error("Error al procesar venta:", error);
+      toast.error(error.response?.data?.message || "Error al procesar venta");
     } finally {
       setProcesando(false);
     }
@@ -441,32 +519,12 @@ const NuevaVentaScreen = () => {
     loadData();
   };
 
-  const productosFiltrados = productos.filter(p => {
+  const productosFiltrados = productos.filter((p) => {
     if (filtroCategoria && p.id_categoria !== parseInt(filtroCategoria)) {
       return false;
     }
     return p.disponible;
   });
-
-  const getPrecioTopping = (topping) => {
-    if (monedaSeleccionada === 'COP') {
-      return topping.precio_cop;
-    } else if (monedaSeleccionada === 'USD') {
-      return topping.precio_usd;
-    } else {
-      return topping.precio_usd * tasas['VES'];
-    }
-  };
-
-  const getPrecioSirope = (sirope) => {
-    if (monedaSeleccionada === 'COP') {
-      return sirope.precio_cop;
-    } else if (monedaSeleccionada === 'USD') {
-      return sirope.precio_usd;
-    } else {
-      return sirope.precio_usd * tasas['VES'];
-    }
-  };
 
   if (loading) {
     return (
@@ -486,21 +544,20 @@ const NuevaVentaScreen = () => {
           Nueva Venta
         </h2>
         <div className="d-flex gap-2 align-items-center">
-          {/* 🔥 NUEVO - Indicador de conexión socket */}
-          <Badge bg={connected ? 'success' : 'danger'} className="me-2">
-            {connected ? '🟢 Conectado' : '🔴 Desconectado'}
+          <Badge bg={connected ? "success" : "danger"} className="me-2">
+            {connected ? "🟢 Conectado" : "🔴 Desconectado"}
           </Badge>
 
           <Form.Select
             value={monedaSeleccionada}
             onChange={(e) => setMonedaSeleccionada(e.target.value)}
-            style={{ width: 'auto' }}
+            style={{ width: "auto" }}
           >
             <option value="COP">Pesos (COP)</option>
             <option value="VES">Bolívares (VES)</option>
             <option value="USD">Dólares (USD)</option>
           </Form.Select>
-          {tasas[monedaSeleccionada] && monedaSeleccionada !== 'USD' && (
+          {tasas[monedaSeleccionada] && monedaSeleccionada !== "USD" && (
             <Badge bg="info">
               Tasa: {tasas[monedaSeleccionada].toFixed(2)}
             </Badge>
@@ -509,9 +566,7 @@ const NuevaVentaScreen = () => {
       </div>
 
       <Row>
-        {/* Columna de Productos */}
         <Col lg={8}>
-          {/* Filtro de categorías */}
           <Card className="border-0 shadow-sm mb-4">
             <Card.Body>
               <Row>
@@ -535,13 +590,12 @@ const NuevaVentaScreen = () => {
             </Card.Body>
           </Card>
 
-          {/* Productos Grid */}
           <Row>
-            {productosFiltrados.map(producto => (
+            {productosFiltrados.map((producto) => (
               <Col key={producto.id_producto} md={6} lg={4} className="mb-3">
-                <Card 
-                  className="h-100 border-0 shadow-sm" 
-                  style={{ cursor: 'pointer' }}
+                <Card
+                  className="h-100 border-0 shadow-sm"
+                  style={{ cursor: "pointer" }}
                   onClick={() => agregarAlCarrito(producto)}
                 >
                   {producto.imagen_url && (
@@ -549,19 +603,23 @@ const NuevaVentaScreen = () => {
                       variant="top"
                       src={producto.imagen_url}
                       alt={producto.nombre_producto}
-                      style={{ height: '150px', objectFit: 'cover' }}
+                      style={{ height: "150px", objectFit: "cover" }}
                     />
                   )}
                   <Card.Body>
-                    <Card.Title className="small">{producto.nombre_producto}</Card.Title>
+                    <Card.Title className="small">
+                      {producto.nombre_producto}
+                    </Card.Title>
                     <div className="d-flex justify-content-between align-items-center">
                       <h5 className="mb-0 text-primary">
-                        {monedaSeleccionada === 'COP' 
-                          ? formatCurrency(producto.precio_base, 'COP')
-                          : monedaSeleccionada === 'USD'
-                          ? formatCurrency(producto.precio_usd, 'USD')
-                          : formatCurrency(producto.precio_usd * tasas['VES'], 'VES')
-                        }
+                        {monedaSeleccionada === "COP"
+                          ? formatCurrency(producto.precio_base, "COP")
+                          : monedaSeleccionada === "USD"
+                          ? formatCurrency(producto.precio_usd, "USD")
+                          : formatCurrency(
+                              producto.precio_usd * tasas["VES"],
+                              "VES"
+                            )}
                       </h5>
                       <Button variant="primary" size="sm">
                         <i className="bi bi-plus"></i>
@@ -573,7 +631,6 @@ const NuevaVentaScreen = () => {
             ))}
           </Row>
 
-          {/* Ventas Recientes */}
           <Card className="border-0 shadow-sm mt-4">
             <Card.Header className="bg-white">
               <h5 className="mb-0">
@@ -594,10 +651,12 @@ const NuevaVentaScreen = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {ventasRecientes.map(venta => (
+                  {ventasRecientes.map((venta) => (
                     <tr key={venta.id_venta}>
-                      <td className="small">{formatDateTime(venta.fecha_venta)}</td>
-                      <td>{venta.nombre_cliente || '-'}</td>
+                      <td className="small">
+                        {formatDateTime(venta.fecha_venta)}
+                      </td>
+                      <td>{venta.nombre_cliente || "-"}</td>
                       <td>
                         <Badge bg="secondary">{venta.codigo_moneda}</Badge>
                       </td>
@@ -605,11 +664,17 @@ const NuevaVentaScreen = () => {
                         {formatCurrency(venta.total, venta.codigo_moneda)}
                       </td>
                       <td>
-                        <Badge bg={
-                          venta.estado_venta === 'COMPLETADA' ? 'success' :
-                          venta.estado_venta === 'EN_PROCESO' ? 'warning' :
-                          venta.estado_venta === 'PENDIENTE' ? 'info' : 'secondary'
-                        }>
+                        <Badge
+                          bg={
+                            venta.estado_venta === "COMPLETADA"
+                              ? "success"
+                              : venta.estado_venta === "EN_PROCESO"
+                              ? "warning"
+                              : venta.estado_venta === "PENDIENTE"
+                              ? "info"
+                              : "secondary"
+                          }
+                        >
                           {venta.estado_venta}
                         </Badge>
                       </td>
@@ -630,17 +695,18 @@ const NuevaVentaScreen = () => {
           </Card>
         </Col>
 
-        {/* Columna del Carrito */}
         <Col lg={4}>
-          <Card className="border-0 shadow-sm sticky-top" style={{ top: '20px' }}>
+          <Card
+            className="border-0 shadow-sm sticky-top"
+            style={{ top: "20px" }}
+          >
             <Card.Header className="bg-primary text-white">
               <h5 className="mb-0">
                 <i className="bi bi-cart3 me-2"></i>
                 Carrito ({carrito.length})
               </h5>
             </Card.Header>
-            <Card.Body style={{ maxHeight: '500px', overflowY: 'auto' }}>
-              {/* Campo de Cliente */}
+            <Card.Body style={{ maxHeight: "500px", overflowY: "auto" }}>
               <div className="mb-3">
                 <Form.Label className="fw-bold">
                   <i className="bi bi-person me-2"></i>
@@ -680,10 +746,12 @@ const NuevaVentaScreen = () => {
                     </Badge>
                   </div>
                 )}
-                {/* Sugerencias de clientes */}
                 {mostrarSugerencias && clientesEncontrados.length > 0 && (
-                  <ListGroup className="position-absolute" style={{ zIndex: 1000, width: 'calc(100% - 30px)' }}>
-                    {clientesEncontrados.map(cliente => (
+                  <ListGroup
+                    className="position-absolute"
+                    style={{ zIndex: 1000, width: "calc(100% - 30px)" }}
+                  >
+                    {clientesEncontrados.map((cliente) => (
                       <ListGroup.Item
                         key={cliente.id_cliente}
                         action
@@ -694,11 +762,15 @@ const NuevaVentaScreen = () => {
                           <div>
                             <strong>{cliente.nombre_cliente}</strong>
                             {cliente.telefono && (
-                              <div className="small text-muted">{cliente.telefono}</div>
+                              <div className="small text-muted">
+                                {cliente.telefono}
+                              </div>
                             )}
                           </div>
                           {cliente.email && (
-                            <small className="text-muted">{cliente.email}</small>
+                            <small className="text-muted">
+                              {cliente.email}
+                            </small>
                           )}
                         </div>
                       </ListGroup.Item>
@@ -711,23 +783,22 @@ const NuevaVentaScreen = () => {
 
               {carrito.length === 0 ? (
                 <div className="text-center py-5 text-muted">
-                  <i className="bi bi-cart-x" style={{ fontSize: '3rem' }}></i>
+                  <i className="bi bi-cart-x" style={{ fontSize: "3rem" }}></i>
                   <p className="mt-2">El carrito está vacío</p>
                 </div>
               ) : (
                 <ListGroup variant="flush">
-                  {carrito.map(item => (
+                  {carrito.map((item) => (
                     <ListGroup.Item key={item.id} className="px-0">
                       <div className="d-flex justify-content-between align-items-start mb-2">
                         <div className="flex-grow-1">
                           <strong>{item.nombre}</strong>
                           <div className="small text-muted">
-                            {monedaSeleccionada === 'COP' 
-                              ? formatCurrency(item.precio_cop, 'COP')
-                              : monedaSeleccionada === 'USD'
-                              ? formatCurrency(item.precio_usd, 'USD')
-                              : formatCurrency(item.precio_usd * tasas['VES'], 'VES')
-                            } x {item.cantidad}
+                            {formatCurrency(
+                              getPrecioItem(item, 'precio_cop', 'precio_usd'),
+                              monedaSeleccionada
+                            )}{" "}
+                            x {item.cantidad}
                           </div>
                         </div>
                         <Button
@@ -747,21 +818,25 @@ const NuevaVentaScreen = () => {
                             <i className="bi bi-snow2 me-1"></i>
                             Sabores:
                           </small>
-                          {item.sabores.map(sabor => (
-                            <Badge
-                              key={sabor.id_sabor}
-                              bg="info"
-                              className="me-1 mb-1"
-                            >
-                              {sabor.nombre}
-                              {sabor.precio > 0 && ` (+${formatCurrency(sabor.precio, monedaSeleccionada)})`}
-                              <i
-                                className="bi bi-x ms-1"
-                                style={{ cursor: 'pointer' }}
-                                onClick={() => removerSabor(item.id, sabor.id_sabor)}
-                              ></i>
-                            </Badge>
-                          ))}
+                          {item.sabores.map((sabor) => {
+                            const precioSabor = getPrecioItem(sabor, 'precio_cop', 'precio_usd');
+                            return (
+                              <Badge
+                                key={sabor.id_sabor}
+                                bg="info"
+                                className="me-1 mb-1"
+                              >
+                                {sabor.nombre}
+                                {precioSabor > 0 &&
+                                  ` (+${formatCurrency(precioSabor, monedaSeleccionada)})`}
+                                <i
+                                  className="bi bi-x ms-1"
+                                  style={{ cursor: "pointer" }}
+                                  onClick={() => removerSabor(item.id, sabor.id_sabor)}
+                                ></i>
+                              </Badge>
+                            );
+                          })}
                         </div>
                       )}
 
@@ -772,16 +847,21 @@ const NuevaVentaScreen = () => {
                             <i className="bi bi-stars me-1"></i>
                             Toppings:
                           </small>
-                          {item.toppings.map(topping => (
+                          {item.toppings.map((topping) => (
                             <Badge
                               key={topping.id_topping}
                               bg="secondary"
                               className="me-1 mb-1"
                             >
-                              {topping.nombre} (+{formatCurrency(getPrecioTopping(topping), monedaSeleccionada)})
+                              {topping.nombre} (+
+                              {formatCurrency(
+                                getPrecioItem(topping, 'precio_cop', 'precio_usd'),
+                                monedaSeleccionada
+                              )}
+                              )
                               <i
                                 className="bi bi-x ms-1"
-                                style={{ cursor: 'pointer' }}
+                                style={{ cursor: "pointer" }}
                                 onClick={() => removerTopping(item.id, topping.id_topping)}
                               ></i>
                             </Badge>
@@ -789,23 +869,29 @@ const NuevaVentaScreen = () => {
                         </div>
                       )}
 
-                      {/* Siropes agregados */}
+                      {/* 🔥 Siropes agregados */}
                       {item.siropes.length > 0 && (
                         <div className="mb-2">
                           <small className="text-muted d-block mb-1">
-                            <i className="bi bi-droplet-half me-1"></i>
+                            <i className="bi bi-droplet-fill me-1"></i>
                             Siropes:
                           </small>
-                          {item.siropes.map(sirope => (
+                          {item.siropes.map((sirope) => (
                             <Badge
                               key={sirope.id_sirope}
                               bg="warning"
+                              text="dark"
                               className="me-1 mb-1"
                             >
-                              {sirope.nombre} (+{formatCurrency(getPrecioSirope(sirope), monedaSeleccionada)})
+                              {sirope.nombre} (+
+                              {formatCurrency(
+                                getPrecioItem(sirope, 'precio_cop', 'precio_usd'),
+                                monedaSeleccionada
+                              )}
+                              )
                               <i
                                 className="bi bi-x ms-1"
-                                style={{ cursor: 'pointer' }}
+                                style={{ cursor: "pointer" }}
                                 onClick={() => removerSirope(item.id, sirope.id_sirope)}
                               ></i>
                             </Badge>
@@ -818,20 +904,31 @@ const NuevaVentaScreen = () => {
                         size="sm"
                         className="mb-2"
                         onChange={(e) => {
-                          const sabor = sabores.find(s => s.id_sabor === parseInt(e.target.value));
+                          const sabor = sabores.find(
+                            (s) => s.id_sabor === parseInt(e.target.value)
+                          );
                           if (sabor) {
                             agregarSabor(item.id, sabor);
-                            e.target.value = '';
+                            e.target.value = "";
                           }
                         }}
                       >
                         <option value="">+ Agregar sabor</option>
-                        {sabores.map(sabor => (
-                          <option key={sabor.id_sabor} value={sabor.id_sabor}>
-                            {sabor.nombre_sabor}
-                            {parseFloat(sabor.precio_adicional) > 0 && ` (+${formatCurrency(parseFloat(sabor.precio_adicional), monedaSeleccionada)})`}
-                          </option>
-                        ))}
+                        {sabores.map((sabor) => {
+                          const precioSabor = monedaSeleccionada === "COP"
+                            ? parseFloat(sabor.precio_adicional_cop || sabor.precio_adicional || 0)
+                            : monedaSeleccionada === "USD"
+                            ? parseFloat(sabor.precio_adicional_usd || 0)
+                            : parseFloat(sabor.precio_adicional_usd || 0) * tasas["VES"];
+                          
+                          return (
+                            <option key={sabor.id_sabor} value={sabor.id_sabor}>
+                              {sabor.nombre_sabor}
+                              {precioSabor > 0 &&
+                                ` (+${formatCurrency(precioSabor, monedaSeleccionada)})`}
+                            </option>
+                          );
+                        })}
                       </Form.Select>
 
                       {/* Selector de toppings */}
@@ -839,51 +936,69 @@ const NuevaVentaScreen = () => {
                         size="sm"
                         className="mb-2"
                         onChange={(e) => {
-                          const topping = toppings.find(t => t.id_topping === parseInt(e.target.value));
+                          const topping = toppings.find(
+                            (t) => t.id_topping === parseInt(e.target.value)
+                          );
                           if (topping) {
                             agregarTopping(item.id, topping);
-                            e.target.value = '';
+                            e.target.value = "";
                           }
                         }}
                       >
                         <option value="">+ Agregar topping</option>
-                        {toppings.map(topping => (
-                          <option key={topping.id_topping} value={topping.id_topping}>
-                            {topping.nombre_topping} (+
-                            {monedaSeleccionada === 'COP' 
-                              ? formatCurrency(parseFloat(topping.precio_adicional_cop), 'COP')
-                              : monedaSeleccionada === 'USD'
-                              ? formatCurrency(parseFloat(topping.precio_adicional_usd), 'USD')
-                              : formatCurrency(parseFloat(topping.precio_adicional_usd) * tasas['VES'], 'VES')
-                            })
-                          </option>
-                        ))}
+                        {toppings.map((topping) => {
+                          const precioTopping = monedaSeleccionada === "COP"
+                            ? parseFloat(topping.precio_adicional_cop)
+                            : monedaSeleccionada === "USD"
+                            ? parseFloat(topping.precio_adicional_usd)
+                            : parseFloat(topping.precio_adicional_usd) * tasas["VES"];
+                          
+                          return (
+                            <option
+                              key={topping.id_topping}
+                              value={topping.id_topping}
+                            >
+                              {topping.nombre_topping} (+
+                              {formatCurrency(precioTopping, monedaSeleccionada)}
+                              )
+                            </option>
+                          );
+                        })}
                       </Form.Select>
 
-                      {/* Selector de siropes */}
+                      {/* 🔥 Selector de siropes */}
                       <Form.Select
                         size="sm"
                         className="mb-2"
                         onChange={(e) => {
-                          const sirope = siropes.find(s => s.id_sirope === parseInt(e.target.value));
+                          const sirope = siropes.find(
+                            (s) => s.id_sirope === parseInt(e.target.value)
+                          );
                           if (sirope) {
                             agregarSirope(item.id, sirope);
-                            e.target.value = '';
+                            e.target.value = "";
                           }
                         }}
                       >
                         <option value="">+ Agregar sirope</option>
-                        {siropes.map(sirope => (
-                          <option key={sirope.id_sirope} value={sirope.id_sirope}>
-                            {sirope.nombre_sirope} (+
-                            {monedaSeleccionada === 'COP' 
-                              ? formatCurrency(parseFloat(sirope.precio_adicional_cop), 'COP')
-                              : monedaSeleccionada === 'USD'
-                              ? formatCurrency(parseFloat(sirope.precio_adicional_usd), 'USD')
-                              : formatCurrency(parseFloat(sirope.precio_adicional_usd) * tasas['VES'], 'VES')
-                            })
-                          </option>
-                        ))}
+                        {siropes.map((sirope) => {
+                          const precioSirope = monedaSeleccionada === "COP"
+                            ? parseFloat(sirope.precio_adicional_cop)
+                            : monedaSeleccionada === "USD"
+                            ? parseFloat(sirope.precio_adicional_usd)
+                            : parseFloat(sirope.precio_adicional_usd) * tasas["VES"];
+                          
+                          return (
+                            <option
+                              key={sirope.id_sirope}
+                              value={sirope.id_sirope}
+                            >
+                              {sirope.nombre_sirope} (+
+                              {formatCurrency(precioSirope, monedaSeleccionada)}
+                              )
+                            </option>
+                          );
+                        })}
                       </Form.Select>
 
                       {/* Cantidad */}
@@ -891,7 +1006,9 @@ const NuevaVentaScreen = () => {
                         <Button
                           variant="outline-secondary"
                           size="sm"
-                          onClick={() => actualizarCantidad(item.id, item.cantidad - 1)}
+                          onClick={() =>
+                            actualizarCantidad(item.id, item.cantidad - 1)
+                          }
                         >
                           <i className="bi bi-dash"></i>
                         </Button>
@@ -899,12 +1016,17 @@ const NuevaVentaScreen = () => {
                         <Button
                           variant="outline-secondary"
                           size="sm"
-                          onClick={() => actualizarCantidad(item.id, item.cantidad + 1)}
+                          onClick={() =>
+                            actualizarCantidad(item.id, item.cantidad + 1)
+                          }
                         >
                           <i className="bi bi-plus"></i>
                         </Button>
                         <div className="ms-auto fw-bold">
-                          {formatCurrency(calcularSubtotal(item), monedaSeleccionada)}
+                          {formatCurrency(
+                            calcularSubtotal(item),
+                            monedaSeleccionada
+                          )}
                         </div>
                       </div>
                     </ListGroup.Item>
@@ -912,7 +1034,7 @@ const NuevaVentaScreen = () => {
                 </ListGroup>
               )}
             </Card.Body>
-            
+
             {carrito.length > 0 && (
               <Card.Footer className="bg-light">
                 <div className="d-flex justify-content-between align-items-center mb-3">
@@ -930,7 +1052,11 @@ const NuevaVentaScreen = () => {
                 >
                   {procesando ? (
                     <>
-                      <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                      <span
+                        className="spinner-border spinner-border-sm me-2"
+                        role="status"
+                        aria-hidden="true"
+                      ></span>
                       Procesando...
                     </>
                   ) : (
@@ -946,7 +1072,6 @@ const NuevaVentaScreen = () => {
         </Col>
       </Row>
 
-      {/* Modal de Detalle de Venta */}
       <DetalleVentaModal
         show={showDetalleModal}
         onHide={() => setShowDetalleModal(false)}

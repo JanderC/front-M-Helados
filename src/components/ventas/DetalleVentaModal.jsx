@@ -10,7 +10,6 @@ const DetalleVentaModal = ({ show, onHide, ventaId, onStatusChange }) => {
   const [loading, setLoading] = useState(false);
   const [procesando, setProcesando] = useState(false);
 
-  // 🔥 NUEVO - Hook de Socket
   const { emitirCambioEstado } = useSocket();
 
   useEffect(() => {
@@ -24,7 +23,11 @@ const DetalleVentaModal = ({ show, onHide, ventaId, onStatusChange }) => {
       setLoading(true);
       const response = await ventasService.getById(ventaId);
       const ventaData = response.data?.data || response.data;
-      console.log('Venta cargada:', ventaData);
+      console.log('🔍 Venta cargada:', ventaData);
+      console.log('📦 Items con siropes:', ventaData.items?.map(item => ({
+        producto: item.nombre_producto,
+        siropes: item.siropes?.length || 0
+      })));
       setVenta(ventaData);
     } catch (error) {
       console.error('Error al cargar detalle de venta:', error);
@@ -40,14 +43,11 @@ const DetalleVentaModal = ({ show, onHide, ventaId, onStatusChange }) => {
       await ventasService.cambiarEstado(ventaId, nuevoEstado);
       toast.success(`Venta ${nuevoEstado.toLowerCase()} correctamente`);
       
-      // Actualizar el estado local
       setVenta({ ...venta, estado_venta: nuevoEstado });
 
-      // 🔥 NUEVO - Emitir evento de socket
       emitirCambioEstado(ventaId, nuevoEstado);
       console.log('✅ Evento de cambio de estado emitido via socket');
       
-      // Notificar al componente padre
       if (onStatusChange) {
         onStatusChange();
       }
@@ -74,12 +74,33 @@ const DetalleVentaModal = ({ show, onHide, ventaId, onStatusChange }) => {
     return badges[estado] || { bg: 'secondary', text: estado };
   };
 
+  // 🔥 CORREGIDO - calcularSubtotal ahora incluye siropes
   const calcularSubtotal = (item) => {
     const precioBase = parseFloat(item.precio_unitario || item.precio || 0) * parseInt(item.cantidad || 0);
+    
     const precioToppings = (item.toppings || []).reduce((sum, t) => 
-      sum + (parseFloat(t.precio || t.precio_unitario || 0) * parseInt(item.cantidad || 0)), 0
+      sum + (parseFloat(t.precio || t.precio_unitario || t.precio_adicional || 0) * parseInt(item.cantidad || 0)), 0
     );
-    return precioBase + precioToppings;
+    
+    const precioSabores = (item.sabores || []).reduce((sum, s) => 
+      sum + (parseFloat(s.precio || s.precio_unitario || s.precio_adicional || 0) * parseInt(item.cantidad || 0)), 0
+    );
+    
+    // 🔥 NUEVO - Incluir siropes en el cálculo
+    const precioSiropes = (item.siropes || []).reduce((sum, s) => 
+      sum + (parseFloat(s.precio || s.precio_unitario || s.precio_adicional || 0) * parseInt(item.cantidad || 0)), 0
+    );
+    
+    console.log('💰 Subtotal calculado:', {
+      producto: item.nombre_producto,
+      base: precioBase,
+      toppings: precioToppings,
+      sabores: precioSabores,
+      siropes: precioSiropes,
+      total: precioBase + precioToppings + precioSabores + precioSiropes
+    });
+    
+    return precioBase + precioToppings + precioSabores + precioSiropes;
   };
 
   const getCodigoMoneda = () => {
@@ -209,32 +230,13 @@ const DetalleVentaModal = ({ show, onHide, ventaId, onStatusChange }) => {
                               {item.cantidad}
                             </small>
                             
-                            {/* Toppings */}
-                            {item.toppings && item.toppings.length > 0 && (
-                              <div className="mt-2">
-                                <small className="text-muted d-block mb-1">Toppings:</small>
-                                {item.toppings.map((topping, idx) => (
-                                  <Badge 
-                                    key={idx} 
-                                    bg="light" 
-                                    text="dark" 
-                                    className="me-1 mb-1"
-                                    style={{ border: '1px solid #dee2e6' }}
-                                  >
-                                    <i className="bi bi-plus-circle me-1"></i>
-                                    {topping.nombre_topping || topping.nombre} 
-                                    <span className="ms-1">
-                                      (+{formatCurrency(topping.precio || topping.precio_unitario, codigoMoneda)})
-                                    </span>
-                                  </Badge>
-                                ))}
-                              </div>
-                            )}
-
                             {/* Sabores */}
                             {item.sabores && item.sabores.length > 0 && (
                               <div className="mt-2">
-                                <small className="text-muted d-block mb-1">Sabores:</small>
+                                <small className="text-muted d-block mb-1">
+                                  <i className="bi bi-snow2 me-1"></i>
+                                  Sabores:
+                                </small>
                                 {item.sabores.map((sabor, idx) => (
                                   <Badge 
                                     key={idx} 
@@ -243,6 +245,67 @@ const DetalleVentaModal = ({ show, onHide, ventaId, onStatusChange }) => {
                                   >
                                     <i className="bi bi-snow2 me-1"></i>
                                     {sabor.nombre_sabor || sabor.nombre}
+                                    {(sabor.precio || sabor.precio_unitario || sabor.precio_adicional) > 0 && (
+                                      <span className="ms-1">
+                                        (+{formatCurrency(
+                                          sabor.precio || sabor.precio_unitario || sabor.precio_adicional,
+                                          codigoMoneda
+                                        )})
+                                      </span>
+                                    )}
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Toppings */}
+                            {item.toppings && item.toppings.length > 0 && (
+                              <div className="mt-2">
+                                <small className="text-muted d-block mb-1">
+                                  <i className="bi bi-stars me-1"></i>
+                                  Toppings:
+                                </small>
+                                {item.toppings.map((topping, idx) => (
+                                  <Badge 
+                                    key={idx} 
+                                    bg="secondary" 
+                                    className="me-1 mb-1"
+                                  >
+                                    <i className="bi bi-plus-circle me-1"></i>
+                                    {topping.nombre_topping || topping.nombre} 
+                                    <span className="ms-1">
+                                      (+{formatCurrency(
+                                        topping.precio || topping.precio_unitario || topping.precio_adicional,
+                                        codigoMoneda
+                                      )})
+                                    </span>
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* 🔥 NUEVO - Siropes */}
+                            {item.siropes && item.siropes.length > 0 && (
+                              <div className="mt-2">
+                                <small className="text-muted d-block mb-1">
+                                  <i className="bi bi-droplet-fill me-1"></i>
+                                  Siropes:
+                                </small>
+                                {item.siropes.map((sirope, idx) => (
+                                  <Badge 
+                                    key={idx} 
+                                    bg="warning"
+                                    text="dark"
+                                    className="me-1 mb-1"
+                                  >
+                                    <i className="bi bi-droplet-fill me-1"></i>
+                                    {sirope.nombre_sirope || sirope.nombre} 
+                                    <span className="ms-1">
+                                      (+{formatCurrency(
+                                        sirope.precio || sirope.precio_unitario || sirope.precio_adicional,
+                                        codigoMoneda
+                                      )})
+                                    </span>
                                   </Badge>
                                 ))}
                               </div>
@@ -362,7 +425,7 @@ const DetalleVentaModal = ({ show, onHide, ventaId, onStatusChange }) => {
               </Alert>
             )}
 
-            {/* 🔥 NUEVO - Acciones adicionales para EN_PROCESO */}
+            {/* Acciones adicionales para EN_PROCESO */}
             {venta.estado_venta === 'EN_PROCESO' && (
               <Alert 
                 variant="light"
