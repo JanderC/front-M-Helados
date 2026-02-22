@@ -39,6 +39,10 @@ const NuevaVentaScreen = () => {
   const [showDetalleModal, setShowDetalleModal] = useState(false);
   const [ventaSeleccionada, setVentaSeleccionada] = useState(null);
 
+  // ✅ NUEVO - Control de vuelto
+  const [montoRecibido, setMontoRecibido] = useState('');
+  const [mostrarVuelto, setMostrarVuelto] = useState(false);
+
   // Estados para cliente
   const [nombreCliente, setNombreCliente] = useState("");
   const [clientesEncontrados, setClientesEncontrados] = useState([]);
@@ -501,6 +505,8 @@ const NuevaVentaScreen = () => {
       // Limpiar carrito y recargar datos
       setCarrito([]);
       limpiarCliente();
+      setMontoRecibido('');
+      setMostrarVuelto(false);
       loadData();
     } catch (error) {
       console.error("Error al procesar venta:", error);
@@ -1037,12 +1043,60 @@ const NuevaVentaScreen = () => {
 
             {carrito.length > 0 && (
               <Card.Footer className="bg-light">
+                {/* Total */}
                 <div className="d-flex justify-content-between align-items-center mb-3">
                   <strong>Total {monedaSeleccionada}:</strong>
-                  <h4 className="mb-0 text-success">
+                  <h4 className="mb-0 text-success fw-bold">
                     {formatCurrency(totalMoneda, monedaSeleccionada)}
                   </h4>
                 </div>
+
+                {/* ✅ NUEVO - Control de vuelto */}
+                <div className="mb-3">
+                  <Form.Label className="fw-bold small">
+                    <i className="bi bi-cash me-1"></i>
+                    Monto recibido ({monedaSeleccionada})
+                  </Form.Label>
+                  <Form.Control
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder={`Ej: ${formatCurrency(Math.ceil(totalMoneda / 1000) * 1000, monedaSeleccionada)}`}
+                    value={montoRecibido}
+                    onChange={(e) => {
+                      setMontoRecibido(e.target.value);
+                      setMostrarVuelto(parseFloat(e.target.value) >= totalMoneda);
+                    }}
+                  />
+                  {montoRecibido && parseFloat(montoRecibido) < totalMoneda && (
+                    <div className="text-danger small mt-1">
+                      <i className="bi bi-exclamation-circle me-1"></i>
+                      Monto insuficiente. Faltan{' '}
+                      <strong>
+                        {formatCurrency(totalMoneda - parseFloat(montoRecibido), monedaSeleccionada)}
+                      </strong>
+                    </div>
+                  )}
+                  {mostrarVuelto && parseFloat(montoRecibido) > 0 && (
+                    <div
+                      className="mt-2 p-2 rounded d-flex justify-content-between align-items-center"
+                      style={{ background: 'rgba(40,167,69,0.1)', border: '1px solid rgba(40,167,69,0.3)' }}
+                    >
+                      <span className="fw-bold text-success">
+                        <i className="bi bi-arrow-return-left me-1"></i>
+                        Vuelto:
+                      </span>
+                      <strong className="text-success fs-5">
+                        {formatCurrency(
+                          Math.max(0, parseFloat(montoRecibido) - totalMoneda),
+                          monedaSeleccionada
+                        )}
+                      </strong>
+                    </div>
+                  )}
+                </div>
+
+                {/* ✅ Botón procesar venta */}
                 <Button
                   variant="success"
                   className="w-100"
@@ -1061,8 +1115,8 @@ const NuevaVentaScreen = () => {
                     </>
                   ) : (
                     <>
-                      <i className="bi bi-check-circle me-2"></i>
-                      Procesar Venta
+                      <i className="bi bi-send me-2"></i>
+                      Procesar Venta y Enviar Pedido
                     </>
                   )}
                 </Button>

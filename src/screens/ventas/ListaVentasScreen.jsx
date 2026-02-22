@@ -44,18 +44,10 @@ const ListaVentasScreen = () => {
     }
   };
 
-  const handleVerDetalle = async (venta) => {
-    try {
-      const response = await ventasService.getById(venta.id_venta);
-      
-      if (response.data.success) {
-        setVentaSeleccionada(response.data.data);
-        setShowModal(true);
-      }
-    } catch (error) {
-      console.error('Error al cargar detalle:', error);
-      toast.error('Error al cargar detalle de venta');
-    }
+  const handleVerDetalle = (venta) => {
+    // ✅ FIX: pasar solo el ID — el modal hace la carga internamente con ventasService.getById
+    setVentaSeleccionada(venta.id_venta);
+    setShowModal(true);
   };
 
   const handleFiltrar = () => {
@@ -195,15 +187,15 @@ const ListaVentasScreen = () => {
         </Card.Body>
       </Card>
 
-      {/* Modal de detalle */}
+      {/* Modal de detalle - ✅ FIX: pasar ventaId (número) no venta (objeto) */}
       <DetalleVentaModal
         show={showModal}
         onHide={() => {
           setShowModal(false);
           setVentaSeleccionada(null);
         }}
-        venta={ventaSeleccionada}
-        onEstadoChange={() => {
+        ventaId={ventaSeleccionada}
+        onStatusChange={() => {
           loadVentas();
           setShowModal(false);
           setVentaSeleccionada(null);

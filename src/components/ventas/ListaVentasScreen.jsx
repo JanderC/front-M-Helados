@@ -12,9 +12,9 @@ const ListaVentasScreen = () => {
   const [showModal, setShowModal] = useState(false);
   const [ventaSeleccionada, setVentaSeleccionada] = useState(null);
   const [filtros, setFiltros] = useState({
-    estado: '',
-    fechaInicio: '',
-    fechaFin: ''
+    estado_venta: '',
+    fecha_inicio: '',
+    fecha_fin: ''
   });
 
   useEffect(() => {
@@ -24,8 +24,18 @@ const ListaVentasScreen = () => {
   const loadVentas = async () => {
     try {
       setLoading(true);
-      const response = await ventasService.getAll(filtros);
-      setVentas(response.data);
+      
+      // Construir params solo con valores no vacíos
+      const params = {};
+      if (filtros.estado_venta) params.estado_venta = filtros.estado_venta;
+      if (filtros.fecha_inicio) params.fecha_inicio = filtros.fecha_inicio;
+      if (filtros.fecha_fin) params.fecha_fin = filtros.fecha_fin;
+      
+      const response = await ventasService.getAll(params);
+      
+      if (response.data.success) {
+        setVentas(response.data.data || []);
+      }
     } catch (error) {
       console.error('Error al cargar ventas:', error);
       toast.error('Error al cargar ventas');
@@ -34,15 +44,10 @@ const ListaVentasScreen = () => {
     }
   };
 
-  const handleVerDetalle = async (venta) => {
-    try {
-      const response = await ventasService.getById(venta.id);
-      setVentaSeleccionada(response.data);
-      setShowModal(true);
-    } catch (error) {
-      console.error('Error al cargar detalle:', error);
-      toast.error('Error al cargar detalle de venta');
-    }
+  const handleVerDetalle = (venta) => {
+    // ✅ FIX: pasar solo el ID — el modal hace la carga internamente con ventasService.getById
+    setVentaSeleccionada(venta.id_venta);
+    setShowModal(true);
   };
 
   const handleFiltrar = () => {
@@ -51,9 +56,9 @@ const ListaVentasScreen = () => {
 
   const handleLimpiarFiltros = () => {
     setFiltros({
-      estado: '',
-      fechaInicio: '',
-      fechaFin: ''
+      estado_venta: '',
+      fecha_inicio: '',
+      fecha_fin: ''
     });
     setTimeout(() => loadVentas(), 100);
   };
@@ -75,13 +80,15 @@ const ListaVentasScreen = () => {
               <Form.Group>
                 <Form.Label>Estado</Form.Label>
                 <Form.Select
-                  value={filtros.estado}
-                  onChange={(e) => setFiltros({ ...filtros, estado: e.target.value })}
+                  value={filtros.estado_venta}
+                  onChange={(e) => setFiltros({ ...filtros, estado_venta: e.target.value })}
                 >
                   <option value="">Todos</option>
-                  {Object.values(ESTADOS_PEDIDO).map(estado => (
-                    <option key={estado} value={estado}>{estado}</option>
-                  ))}
+                  <option value="PENDIENTE">PENDIENTE</option>
+                  <option value="EN_PROCESO">EN PROCESO</option>
+                  <option value="COMPLETADA">COMPLETADA</option>
+                  <option value="CANCELADA">CANCELADA</option>
+                  <option value="DEVUELTA">DEVUELTA</option>
                 </Form.Select>
               </Form.Group>
             </Col>
@@ -90,8 +97,8 @@ const ListaVentasScreen = () => {
                 <Form.Label>Fecha Inicio</Form.Label>
                 <Form.Control
                   type="date"
-                  value={filtros.fechaInicio}
-                  onChange={(e) => setFiltros({ ...filtros, fechaInicio: e.target.value })}
+                  value={filtros.fecha_inicio}
+                  onChange={(e) => setFiltros({ ...filtros, fecha_inicio: e.target.value })}
                 />
               </Form.Group>
             </Col>
@@ -100,8 +107,8 @@ const ListaVentasScreen = () => {
                 <Form.Label>Fecha Fin</Form.Label>
                 <Form.Control
                   type="date"
-                  value={filtros.fechaFin}
-                  onChange={(e) => setFiltros({ ...filtros, fechaFin: e.target.value })}
+                  value={filtros.fecha_fin}
+                  onChange={(e) => setFiltros({ ...filtros, fecha_fin: e.target.value })}
                 />
               </Form.Group>
             </Col>
@@ -135,30 +142,32 @@ const ListaVentasScreen = () => {
               <Table hover>
                 <thead className="table-light">
                   <tr>
-                    <th>#</th>
+                    <th>Factura</th>
                     <th>Fecha</th>
+                    <th>Usuario</th>
+                    <th>Cliente</th>
                     <th>Total</th>
                     <th>Moneda</th>
                     <th>Estado</th>
-                    <th>Productos</th>
                     <th>Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {ventas.map((venta) => (
-                    <tr key={venta.id}>
-                      <td className="fw-bold">#{venta.id}</td>
-                      <td>{formatDateTime(venta.createdAt)}</td>
-                      <td className="fw-bold">{formatCurrency(venta.total, venta.moneda)}</td>
+                    <tr key={venta.id_venta}>
+                      <td className="fw-bold">{venta.numero_factura}</td>
+                      <td>{formatDateTime(venta.fecha_venta)}</td>
+                      <td>{venta.nombre_usuario || '-'}</td>
+                      <td>{venta.nombre_cliente || 'Cliente General'}</td>
+                      <td className="fw-bold">{formatCurrency(venta.total, venta.codigo_moneda)}</td>
                       <td>
-                        <Badge bg="secondary">{venta.moneda}</Badge>
+                        <Badge bg="secondary">{venta.codigo_moneda}</Badge>
                       </td>
                       <td>
-                        <Badge bg={COLORES_ESTADO[venta.estado] || 'secondary'}>
-                          {venta.estado}
+                        <Badge bg={COLORES_ESTADO[venta.estado_venta] || 'secondary'}>
+                          {venta.estado_venta}
                         </Badge>
                       </td>
-                      <td>{venta.items?.length || 0} productos</td>
                       <td>
                         <Button
                           variant="outline-primary"
@@ -178,12 +187,19 @@ const ListaVentasScreen = () => {
         </Card.Body>
       </Card>
 
-      {/* Modal de detalle */}
+      {/* Modal de detalle - ✅ FIX: pasar ventaId (número) no venta (objeto) */}
       <DetalleVentaModal
         show={showModal}
-        onHide={() => setShowModal(false)}
-        venta={ventaSeleccionada}
-        onEstadoChange={loadVentas}
+        onHide={() => {
+          setShowModal(false);
+          setVentaSeleccionada(null);
+        }}
+        ventaId={ventaSeleccionada}
+        onStatusChange={() => {
+          loadVentas();
+          setShowModal(false);
+          setVentaSeleccionada(null);
+        }}
       />
     </div>
   );
