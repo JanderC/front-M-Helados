@@ -186,7 +186,7 @@ const Navbar = ({ onToggleSidebar }) => {
               boxShadow: '0 2px 12px rgba(125,232,216,0.2)'
             }}>
               <img
-                src="https://www.pangeatech.com.uy:6068/bot-whatsapp-images/heladitos.png"
+                src="https://cdn.discordapp.com/attachments/1412062677794295881/1475495680834539711/Captura_de_pantalla_2025-10-01_145732.png?ex=699db1ef&is=699c606f&hm=8406dfc70858f3857a2871e76f2d56c80bb2c5d4966d8925c077c7a5556ac6a8&"
                 alt="M Helados"
                 style={{ height: 26, width: 'auto' }}
               />

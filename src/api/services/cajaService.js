@@ -8,24 +8,28 @@ const MONEDAS_MAP = {
 };
 
 export const cajaService = {
-  // Abrir caja - CORREGIDO para coincidir con el backend
-  abrir: (montoInicial, moneda = 'COP') => {
+  // Abrir caja - acepta montos por moneda
+  abrir: (montoInicial, moneda = 'COP', notas = '') => {
     const body = {
       monto_inicial_usd: moneda === 'USD' ? parseFloat(montoInicial) : 0,
       monto_inicial_ves: moneda === 'VES' ? parseFloat(montoInicial) : 0,
       monto_inicial_cop: moneda === 'COP' ? parseFloat(montoInicial) : 0,
-      notas: `Apertura de caja con ${montoInicial} ${moneda}`
+      notas: notas || `Apertura de caja con ${montoInicial} ${moneda}`
     };
     return api.post('/caja/abrir', body);
   },
 
-  // Cerrar caja - CORREGIDO
-  cerrar: (montoFinal, moneda = 'COP', observaciones = '') => {
+  /**
+   * Cerrar caja — CORREGIDO: envía los tres montos por separado
+   * @param {object} montosFinal - { cop, usd, ves }
+   * @param {string} observaciones
+   */
+  cerrar: (montosFinal = {}, observaciones = '') => {
     const body = {
-      monto_final_usd: moneda === 'USD' ? parseFloat(montoFinal) : 0,
-      monto_final_ves: moneda === 'VES' ? parseFloat(montoFinal) : 0,
-      monto_final_cop: moneda === 'COP' ? parseFloat(montoFinal) : 0,
-      notas: observaciones
+      monto_final_cop: parseFloat(montosFinal.cop) || 0,
+      monto_final_usd: parseFloat(montosFinal.usd) || 0,
+      monto_final_ves: parseFloat(montosFinal.ves) || 0,
+      notas: observaciones || null,
     };
     return api.post('/caja/cerrar', body);
   },
@@ -35,7 +39,7 @@ export const cajaService = {
     return api.get('/caja/estado');
   },
 
-  // Flujo de caja - CORREGIDO parámetros
+  // Flujo de caja
   getFlujo: (params = {}) => {
     const queryParams = {
       fecha_inicio: params.fechaInicio,
@@ -45,11 +49,9 @@ export const cajaService = {
     return api.get('/caja/flujo', { params: queryParams });
   },
 
-  // Registrar transacción manual - CORREGIDO
+  // Registrar transacción manual
   registrarTransaccion: (transaccionData) => {
-    // Convertir código de moneda a ID
-    const idMoneda = MONEDAS_MAP[transaccionData.moneda] || 3; // Por defecto COP
-    
+    const idMoneda = MONEDAS_MAP[transaccionData.moneda] || 3;
     const body = {
       tipo_transaccion: transaccionData.tipo,
       concepto: transaccionData.concepto,
@@ -62,7 +64,7 @@ export const cajaService = {
     return api.post('/caja/transaccion', body);
   },
 
-  // Resumen de ventas - CORREGIDO
+  // Resumen de ventas por período
   getResumenVentas: (params = {}) => {
     const queryParams = {
       periodo: params.periodo || 'diario',

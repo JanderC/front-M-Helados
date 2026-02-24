@@ -322,7 +322,7 @@ const NuevaVentaScreen = () => {
               <Row>
                 <Col md={6}>
                   <Form.Group>
-                    <Form.Label>Filtrar por Categoría</Form.Label>
+                    <Form.Label>Filtrar por Categorías</Form.Label>
                     <Form.Select
                       value={filtroCategoria}
                       onChange={(e) => setFiltroCategoria(e.target.value)}
