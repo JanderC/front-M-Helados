@@ -90,7 +90,7 @@ const LoginScreen = () => {
                 <div className="text-center mb-4">
                   <div className="mb-3">
                     <img 
-                      src="https://cdn.discordapp.com/attachments/1412062677794295881/1475495680834539711/Captura_de_pantalla_2025-10-01_145732.png?ex=699db1ef&is=699c606f&hm=8406dfc70858f3857a2871e76f2d56c80bb2c5d4966d8925c077c7a5556ac6a8&"
+                      src="https://www.pangeatech.com.uy:9444/gestor-documental/EMP-2E866C/info_empresa/static/original/image/captura_de_pantalla_2025-10-01_145732-FILE-E8AF04E4.png"
                       alt="M Helados Logo"
                       style={{
                         maxWidth: '280px',
