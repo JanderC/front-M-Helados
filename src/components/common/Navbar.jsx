@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import ChangePasswordModal from './ChangePasswordModal';
 
-const Navbar = ({ onToggleSidebar }) => {
+const Navbar = ({ onToggleMobile, onToggleCollapse, collapsed }) => {
   const { user, logout } = useAuth();
   const { connected } = useSocket();
   const navigate = useNavigate();
@@ -23,8 +23,17 @@ const Navbar = ({ onToggleSidebar }) => {
           background: linear-gradient(135deg, #5E1F96 0%, #7B2FBE 60%, #6a28a8 100%) !important;
           border-bottom: 1px solid rgba(125,232,216,0.15) !important;
           box-shadow: 0 2px 20px rgba(94,31,150,0.4) !important;
-          height: 60px;
+          height: 60px !important;
+          min-height: 60px !important;
+          max-height: 60px !important;
           z-index: 1030;
+          padding-top: 0 !important;
+          padding-bottom: 0 !important;
+        }
+        .navbar-custom > .container-fluid {
+          height: 60px;
+          flex-wrap: nowrap !important;
+          align-items: center;
         }
 
         .navbar-brand-text {
@@ -33,16 +42,16 @@ const Navbar = ({ onToggleSidebar }) => {
           font-size: 1.2rem;
           letter-spacing: -0.02em;
           color: #fff !important;
+          white-space: nowrap;
         }
-        .navbar-brand-text span {
-          color: #7DE8D8;
-        }
+        .navbar-brand-text span { color: #7DE8D8; }
 
-        .hamburger-btn {
+        .sidebar-toggle-btn {
           background: rgba(255,255,255,0.12) !important;
           border: 1px solid rgba(255,255,255,0.2) !important;
           border-radius: 10px;
           width: 38px;
+          min-width: 38px;
           height: 38px;
           display: flex;
           align-items: center;
@@ -51,8 +60,9 @@ const Navbar = ({ onToggleSidebar }) => {
           color: #fff;
           padding: 0;
           cursor: pointer;
+          flex-shrink: 0;
         }
-        .hamburger-btn:hover {
+        .sidebar-toggle-btn:hover {
           background: rgba(125,232,216,0.2) !important;
           border-color: rgba(125,232,216,0.4) !important;
         }
@@ -67,6 +77,8 @@ const Navbar = ({ onToggleSidebar }) => {
           font-family: 'DM Sans', sans-serif;
           font-weight: 600;
           border: 1px solid;
+          white-space: nowrap;
+          flex-shrink: 0;
         }
         .status-pill.connected {
           background: rgba(125,232,216,0.18);
@@ -78,13 +90,8 @@ const Navbar = ({ onToggleSidebar }) => {
           border-color: rgba(255,100,100,0.3);
           color: #fca5a5;
         }
-        .status-dot {
-          width: 7px; height: 7px; border-radius: 50%;
-        }
-        .status-dot.connected {
-          background: #7DE8D8;
-          animation: pulse-dot 2s ease infinite;
-        }
+        .status-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+        .status-dot.connected { background: #7DE8D8; animation: pulse-dot 2s ease infinite; }
         .status-dot.disconnected { background: #fca5a5; }
         @keyframes pulse-dot {
           0%, 100% { opacity: 1; transform: scale(1); }
@@ -101,6 +108,7 @@ const Navbar = ({ onToggleSidebar }) => {
           gap: 10px;
           transition: all 0.2s ease !important;
           color: #fff !important;
+          flex-shrink: 0;
         }
         .user-btn:hover, .show > .user-btn {
           background: rgba(125,232,216,0.18) !important;
@@ -116,7 +124,6 @@ const Navbar = ({ onToggleSidebar }) => {
           font-size: 0.85rem; color: #1a0a2e; flex-shrink: 0;
           box-shadow: 0 3px 10px rgba(125,232,216,0.4);
         }
-
         .user-info-name {
           font-family: 'DM Sans', sans-serif; font-weight: 600;
           font-size: 0.82rem; color: #fff; line-height: 1.2;
@@ -141,28 +148,15 @@ const Navbar = ({ onToggleSidebar }) => {
           from { opacity: 0; transform: translateY(-6px) scale(0.97); }
           to { opacity: 1; transform: translateY(0) scale(1); }
         }
-        .dd-header {
-          padding: 8px 12px 12px;
-          border-bottom: 1px solid rgba(123,47,190,0.08);
-          margin-bottom: 6px;
-        }
-        .dd-header .dd-name {
-          font-family: 'Syne', sans-serif; font-weight: 700;
-          font-size: 0.9rem; color: #1a0a2e;
-        }
-        .dd-header .dd-role {
-          font-size: 0.7rem; color: #7B2FBE;
-          text-transform: uppercase; letter-spacing: 0.06em;
-          font-weight: 600; font-family: 'DM Sans', sans-serif;
-        }
+        .dd-header { padding: 8px 12px 12px; border-bottom: 1px solid rgba(123,47,190,0.08); margin-bottom: 6px; }
+        .dd-header .dd-name { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.9rem; color: #1a0a2e; }
+        .dd-header .dd-role { font-size: 0.7rem; color: #7B2FBE; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; font-family: 'DM Sans', sans-serif; }
         .dd-item {
-          font-family: 'DM Sans', sans-serif; font-size: 0.875rem;
-          font-weight: 500; color: #3d2060 !important;
-          border-radius: 8px; padding: 9px 12px;
-          display: flex; align-items: center; gap: 10px;
-          transition: all 0.15s ease;
-          background: transparent !important; border: none;
-          width: 100%; cursor: pointer; text-decoration: none !important;
+          font-family: 'DM Sans', sans-serif; font-size: 0.875rem; font-weight: 500;
+          color: #3d2060 !important; border-radius: 8px; padding: 9px 12px;
+          display: flex; align-items: center; gap: 10px; transition: all 0.15s ease;
+          background: transparent !important; border: none; width: 100%; cursor: pointer;
+          text-decoration: none !important;
         }
         .dd-item:hover { background: rgba(123,47,190,0.07) !important; color: #7B2FBE !important; }
         .dd-item.danger { color: #dc2626 !important; }
@@ -171,12 +165,28 @@ const Navbar = ({ onToggleSidebar }) => {
       `}</style>
 
       <BSNavbar className="navbar-custom px-2 px-md-3" sticky="top">
-        <Container fluid className="gap-2">
-          <button className="hamburger-btn d-lg-none me-1" onClick={onToggleSidebar}>
+        <Container fluid style={{ flexWrap: 'nowrap', height: '60px', alignItems: 'center', gap: '10px' }}>
+
+          {/* Hamburger — solo móvil */}
+          <button className="sidebar-toggle-btn d-lg-none" onClick={onToggleMobile} title="Abrir menú">
             <i className="bi bi-list" style={{ fontSize: '1.3rem' }}></i>
           </button>
 
-          <BSNavbar.Brand className="d-flex align-items-center gap-2 me-auto p-0">
+          {/* Collapse toggle — solo desktop */}
+          <button
+            className="sidebar-toggle-btn d-none d-lg-flex"
+            onClick={onToggleCollapse}
+            title={collapsed ? 'Expandir sidebar' : 'Colapsar sidebar'}
+            style={{ opacity: collapsed ? 0.7 : 1 }}
+          >
+            <i
+              className="bi bi-layout-sidebar"
+              style={{ fontSize: '1.1rem', transition: 'transform 0.3s ease', transform: collapsed ? 'scaleX(-1)' : 'scaleX(1)' }}
+            />
+          </button>
+
+          {/* Brand */}
+          <BSNavbar.Brand className="d-flex align-items-center gap-2 me-auto p-0" style={{ flexShrink: 1, minWidth: 0 }}>
             <div style={{
               width: 36, height: 36, borderRadius: 10,
               background: 'rgba(255,255,255,0.18)',
@@ -196,7 +206,8 @@ const Navbar = ({ onToggleSidebar }) => {
             </span>
           </BSNavbar.Brand>
 
-          <Nav className="d-flex align-items-center gap-2">
+          {/* Right side */}
+          <Nav style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'nowrap', flexShrink: 0 }}>
             <div className={`status-pill ${connected ? 'connected' : 'disconnected'} d-none d-sm-flex`}>
               <div className={`status-dot ${connected ? 'connected' : 'disconnected'}`} />
               <span className="d-none d-md-inline">{connected ? 'En línea' : 'Sin conexión'}</span>

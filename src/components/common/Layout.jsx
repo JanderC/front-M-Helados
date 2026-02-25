@@ -4,39 +4,49 @@ import Navbar from './Navbar';
 import Sidebar from './Sidebar';
 
 const Layout = ({ children }) => {
-  const [showSidebar, setShowSidebar] = useState(false);
+  const [showMobile, setShowMobile] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
     const handleResize = () => {
-      if (window.innerWidth >= 992) setShowSidebar(false);
+      if (window.innerWidth >= 992) setShowMobile(false);
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   useEffect(() => {
-    if (showSidebar && window.innerWidth < 992) {
+    if (showMobile && window.innerWidth < 992) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = '';
     }
     return () => { document.body.style.overflow = ''; };
-  }, [showSidebar]);
+  }, [showMobile]);
 
   return (
-    <div className="d-flex flex-column" style={{ minHeight: '100vh' }}>
-      <Navbar onToggleSidebar={() => setShowSidebar(prev => !prev)} />
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+      <Navbar
+        onToggleMobile={() => setShowMobile(prev => !prev)}
+        onToggleCollapse={() => setCollapsed(prev => !prev)}
+        collapsed={collapsed}
+      />
 
-      <div className="d-flex flex-grow-1" style={{ minHeight: 0 }}>
-        <Sidebar show={showSidebar} onHide={() => setShowSidebar(false)} />
+      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+        <Sidebar
+          showMobile={showMobile}
+          onHideMobile={() => setShowMobile(false)}
+          collapsed={collapsed}
+        />
 
         <main
-          className="flex-grow-1"
           style={{
+            flex: 1,
             overflowX: 'hidden',
             overflowY: 'auto',
             background: '#f4f2f8',
             minWidth: 0,
+            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
           }}
         >
           <Container fluid className="p-3 p-md-4">
