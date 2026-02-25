@@ -107,3 +107,17 @@ export const formatPercentage = (value, decimals = 2) => {
 
   return `${numValue.toFixed(decimals)}%`;
 };
+
+export const formatTimeAgo = (dateString) => {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now - date;
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffMins < 1) return 'hace unos segundos';
+  if (diffMins < 60) return `hace ${diffMins} min`;
+  if (diffHours < 24) return `hace ${diffHours} h`;
+  return `hace ${diffDays} d`;
+};

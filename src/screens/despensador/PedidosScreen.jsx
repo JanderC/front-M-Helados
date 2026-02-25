@@ -1,204 +1,45 @@
+// PedidosScreen.jsx (versión mejorada)
 import { useState, useEffect, useCallback } from 'react';
-import { Row, Col, Card, Badge, Button, Alert } from 'react-bootstrap';
+import { Row, Col, Card, Badge, Button, Alert, Modal } from 'react-bootstrap';
 import { ventasService } from '../../api/services/ventasService';
 import { useSocket } from '../../context/SocketContext';
 import { useAuth } from '../../hooks/useAuth';
-import { formatCurrency, formatDateTime } from '../../utils/formatters';
+import { formatCurrency, formatDateTime, formatTimeAgo } from '../../utils/formatters';
 import { toast } from 'react-toastify';
 
 /* ─────────────────────────────────────────────────────
-   Sub-componente: Tarjeta de un ítem del pedido
-   Muestra imagen + nombre + cantidad + siropes/toppings
-   El precio queda oculto si hidePrices=true
+   Componente: Tarjeta de resumen (para la lista)
 ───────────────────────────────────────────────────── */
-const ItemCard = ({ item, moneda, hidePrices }) => {
-  const nombre = item.nombre_producto || item.nombre || '—';
-  const imagen = item.imagen_url || item.imagenUrl;
-
-  return (
-    <div className="pedido-item-card">
-      {/* Imagen */}
-      <div className="pedido-item-img-wrap">
-        {imagen ? (
-          <img src={imagen} alt={nombre} className="pedido-item-img" />
-        ) : (
-          <div className="pedido-item-img-placeholder">
-            <i className="bi bi-cup-straw" />
-          </div>
-        )}
-      </div>
-
-      {/* Info */}
-      <div className="pedido-item-info">
-        <div className="pedido-item-nombre">{nombre}</div>
-        <div className="pedido-item-cantidad">
-          <i className="bi bi-x-circle-fill me-1 opacity-50" style={{ fontSize: '0.65rem' }} />
-          {item.cantidad} unidad{item.cantidad > 1 ? 'es' : ''}
-        </div>
-
-        {/* Sabores */}
-        {item.sabores && item.sabores.length > 0 && (
-          <div className="pedido-item-extras">
-            <span className="extras-label">
-              <i className="bi bi-snow2 me-1" />Sabores:
-            </span>
-            <div className="extras-badges">
-              {item.sabores.map((s, i) => (
-                <span key={i} className="extra-badge sabor">
-                  {s.nombre_sabor || s.nombre}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Toppings */}
-        {item.toppings && item.toppings.length > 0 && (
-          <div className="pedido-item-extras">
-            <span className="extras-label">
-              <i className="bi bi-stars me-1" />Toppings:
-            </span>
-            <div className="extras-badges">
-              {item.toppings.map((t, i) => (
-                <span key={i} className="extra-badge topping">
-                  {t.nombre_topping || t.nombre}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Siropes */}
-        {item.siropes && item.siropes.length > 0 && (
-          <div className="pedido-item-extras">
-            <span className="extras-label">
-              <i className="bi bi-droplet-fill me-1" />Siropes:
-            </span>
-            <div className="extras-badges">
-              {item.siropes.map((s, i) => (
-                <span key={i} className="extra-badge sirope">
-                  {s.nombre_sirope || s.nombre}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Precio — solo admin */}
-      {!hidePrices && (
-        <div className="pedido-item-precio">
-          {formatCurrency(
-            (parseFloat(item.precio_unitario || item.precio || 0)) * parseInt(item.cantidad || 1),
-            moneda
-          )}
-        </div>
-      )}
-    </div>
-  );
-};
-
-/* ─────────────────────────────────────────────────────
-   Sub-componente: Tarjeta completa de un pedido
-───────────────────────────────────────────────────── */
-const PedidoCard = ({ pedido, onCambiarEstado, onCancelar, procesando, hidePrices }) => {
+const PedidoResumen = ({ pedido, onVerDetalle, hidePrices }) => {
   const items = pedido.items || pedido.detalles || [];
-  const moneda = pedido.codigo_moneda || 'USD';
-  const estado = pedido.estado_venta;
-  const esPendiente = estado === 'PENDIENTE';
+  const tiempoAgo = formatTimeAgo(pedido.fecha_venta || pedido.created_at);
 
   return (
-    <div className={`pedido-card ${esPendiente ? 'pendiente' : 'en-proceso'}`}>
-      {/* Header */}
-      <div className="pedido-card-header">
-        <div>
-          <div className="pedido-factura">
-            <i className="bi bi-receipt me-2" />
-            #{pedido.numero_factura || pedido.id_venta}
+    <div className={`pedido-resumen ${pedido.estado_venta === 'PENDIENTE' ? 'pendiente' : 'proceso'}`}>
+      <div className="d-flex align-items-center justify-content-between w-100">
+        <div className="flex-grow-1 me-2">
+          <div className="d-flex align-items-center gap-2 flex-wrap">
+            <span className="pedido-resumen-numero">
+              #{pedido.numero_factura || pedido.id_venta}
+            </span>
+            <Badge className={`estado-badge-mini ${pedido.estado_venta === 'PENDIENTE' ? 'pendiente' : 'proceso'}`}>
+              {pedido.estado_venta === 'PENDIENTE' ? 'PENDIENTE' : 'EN PROCESO'}
+            </Badge>
           </div>
-          <div className="pedido-hora">
-            <i className="bi bi-clock me-1 opacity-60" />
-            {formatDateTime(pedido.fecha_venta || pedido.created_at)}
-          </div>
-          {pedido.nombre_cliente && (
-            <div className="pedido-cliente">
-              <i className="bi bi-person me-1 opacity-60" />
-              {pedido.nombre_cliente}
-            </div>
-          )}
-        </div>
-        <div className="text-end">
-          <Badge className={`estado-badge ${esPendiente ? 'pendiente' : 'proceso'}`}>
-            {esPendiente ? (
-              <><i className="bi bi-hourglass-split me-1" />PENDIENTE</>
-            ) : (
-              <><i className="bi bi-gear-wide-connected me-1" />EN PROCESO</>
+          <div className="pedido-resumen-meta">
+            {pedido.nombre_cliente && (
+              <span><i className="bi bi-person me-1" />{pedido.nombre_cliente}</span>
             )}
-          </Badge>
-          {/* Total — solo admin */}
-          {!hidePrices && (
-            <div className="pedido-total">
-              {formatCurrency(pedido.total || pedido.monto_total, moneda)}
-              <span className="moneda-tag ms-1">{moneda}</span>
-            </div>
-          )}
-          {/* Para despensador: solo cantidad de productos */}
-          {hidePrices && (
-            <div className="pedido-items-count">
-              <i className="bi bi-bag me-1" />
-              {items.length} producto{items.length !== 1 ? 's' : ''}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Items */}
-      <div className="pedido-items-list">
-        {items.length === 0 ? (
-          <div className="pedido-items-empty">
-            <i className="bi bi-question-circle me-2 opacity-50" />
-            Sin detalle de productos
+            <span><i className="bi bi-clock me-1" />{tiempoAgo}</span>
+            <span><i className="bi bi-bag me-1" />{items.length} ítem(s)</span>
           </div>
-        ) : (
-          items.map((item, idx) => (
-            <ItemCard
-              key={idx}
-              item={item}
-              moneda={moneda}
-              hidePrices={hidePrices}
-            />
-          ))
-        )}
-      </div>
-
-      {/* Acciones */}
-      <div className="pedido-acciones">
-        {esPendiente ? (
-          <Button
-            className="btn-accion iniciar"
-            onClick={() => onCambiarEstado(pedido.id_venta, 'EN_PROCESO')}
-            disabled={procesando}
-          >
-            <i className="bi bi-play-circle-fill me-2" />
-            Iniciar Preparación
-          </Button>
-        ) : (
-          <Button
-            className="btn-accion completar"
-            onClick={() => onCambiarEstado(pedido.id_venta, 'COMPLETADA')}
-            disabled={procesando}
-          >
-            <i className="bi bi-check-circle-fill me-2" />
-            Marcar Completado
-          </Button>
-        )}
+        </div>
         <Button
-          className="btn-accion cancelar"
-          onClick={() => onCancelar(pedido.id_venta)}
-          disabled={procesando}
+          variant="outline-primary"
+          className="btn-ver-detalle rounded-circle p-2"
+          onClick={() => onVerDetalle(pedido)}
         >
-          <i className="bi bi-x-circle me-1" />
-          Cancelar
+          <i className="bi bi-eye fs-5" />
         </Button>
       </div>
     </div>
@@ -206,19 +47,165 @@ const PedidoCard = ({ pedido, onCambiarEstado, onCancelar, procesando, hidePrice
 };
 
 /* ─────────────────────────────────────────────────────
-   PANTALLA PRINCIPAL
+   Componente: Modal de detalle completo del pedido
+───────────────────────────────────────────────────── */
+const PedidoDetalleModal = ({ show, onHide, pedido, onCambiarEstado, onCancelar, procesando, hidePrices }) => {
+  if (!pedido) return null;
+
+  const items = pedido.items || pedido.detalles || [];
+  const moneda = pedido.codigo_moneda || 'USD';
+  const esPendiente = pedido.estado_venta === 'PENDIENTE';
+
+  return (
+    <Modal show={show} onHide={onHide} fullscreen="md-down" size="lg" centered>
+      <Modal.Header closeButton className="bg-light">
+        <Modal.Title className="fw-bold">
+          Pedido #{pedido.numero_factura || pedido.id_venta}
+        </Modal.Title>
+      </Modal.Header>
+      <Modal.Body className="p-4">
+        {/* Información general */}
+        <div className="mb-4 p-3 bg-white rounded shadow-sm">
+          <Row>
+            <Col sm={6}>
+              <p><i className="bi bi-person me-2" /><strong>Cliente:</strong> {pedido.nombre_cliente || 'Mostrador'}</p>
+              <p><i className="bi bi-clock me-2" /><strong>Recibido:</strong> {formatDateTime(pedido.fecha_venta || pedido.created_at)}</p>
+            </Col>
+            <Col sm={6}>
+              <p><i className="bi bi-tag me-2" /><strong>Estado:</strong> <Badge bg={esPendiente ? 'warning' : 'info'} className="px-3 py-2">{pedido.estado_venta}</Badge></p>
+              <p><i className="bi bi-box me-2" /><strong>Total ítems:</strong> {items.length}</p>
+            </Col>
+          </Row>
+        </div>
+
+        {/* Lista de ítems */}
+        <h5 className="mb-3">Detalle de productos</h5>
+        <div className="detalle-items-container">
+          {items.length === 0 ? (
+            <p className="text-muted text-center py-4">No hay productos en este pedido</p>
+          ) : (
+            items.map((item, idx) => (
+              <div key={idx} className="detalle-item-card mb-3 p-3 bg-white rounded shadow-sm">
+                {/* Imagen + nombre + cantidad */}
+                <div className="d-flex align-items-start gap-3">
+                  {item.imagen_url ? (
+                    <img src={item.imagen_url} alt={item.nombre_producto || item.nombre} className="detalle-item-img" />
+                  ) : (
+                    <div className="detalle-item-img-placeholder">
+                      <i className="bi bi-cup-straw" />
+                    </div>
+                  )}
+                  <div className="flex-grow-1">
+                    <h6 className="fw-bold mb-2">{item.nombre_producto || item.nombre}</h6>
+                    <Badge bg="dark" className="px-3 py-2">Cantidad: x{item.cantidad}</Badge>
+                  </div>
+                </div>
+
+                {/* Sabores */}
+                {item.sabores?.length > 0 && (
+                  <div className="mt-3 p-2 bg-light rounded">
+                    <p className="mb-2 text-info fw-bold small"><i className="bi bi-snow2 me-2" />Sabores:</p>
+                    <div className="d-flex flex-wrap gap-2">
+                      {item.sabores.map((s, i) => (
+                        <Badge key={i} bg="info" className="px-3 py-2">{s.nombre_sabor || s.nombre}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Toppings */}
+                {item.toppings?.length > 0 && (
+                  <div className="mt-3 p-2 bg-light rounded">
+                    <p className="mb-2 text-secondary fw-bold small"><i className="bi bi-stars me-2" />Toppings:</p>
+                    <div className="d-flex flex-wrap gap-2">
+                      {item.toppings.map((t, i) => (
+                        <Badge key={i} bg="secondary" className="px-3 py-2">{t.nombre_topping || t.nombre}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Siropes */}
+                {item.siropes?.length > 0 && (
+                  <div className="mt-3 p-2 bg-light rounded">
+                    <p className="mb-2 text-warning fw-bold small"><i className="bi bi-droplet-half me-2" />Siropes:</p>
+                    <div className="d-flex flex-wrap gap-2">
+                      {item.siropes.map((s, i) => (
+                        <Badge key={i} bg="warning" text="dark" className="px-3 py-2">{s.nombre_sirope || s.nombre}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      </Modal.Body>
+      <Modal.Footer className="bg-light d-flex justify-content-between align-items-center">
+        <div className="d-flex gap-2">
+          {esPendiente ? (
+            <>
+              <Button
+                variant="success"
+                size="lg"
+                onClick={() => onCambiarEstado(pedido.id_venta, 'EN_PROCESO')}
+                disabled={procesando}
+              >
+                <i className="bi bi-play-fill me-2" />Iniciar preparación
+              </Button>
+              <Button
+                variant="danger"
+                size="lg"
+                onClick={() => onCancelar(pedido.id_venta)}
+                disabled={procesando}
+              >
+                <i className="bi bi-x-circle me-2" />Cancelar
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                variant="primary"
+                size="lg"
+                onClick={() => onCambiarEstado(pedido.id_venta, 'COMPLETADA')}
+                disabled={procesando}
+              >
+                <i className="bi bi-check2-circle me-2" />Marcar como listo
+              </Button>
+              <Button
+                variant="danger"
+                size="lg"
+                onClick={() => onCancelar(pedido.id_venta)}
+                disabled={procesando}
+              >
+                <i className="bi bi-x-circle me-2" />Cancelar
+              </Button>
+            </>
+          )}
+        </div>
+        <Button variant="secondary" size="lg" onClick={onHide}>
+          Cerrar
+        </Button>
+      </Modal.Footer>
+    </Modal>
+  );
+};
+
+/* ─────────────────────────────────────────────────────
+   Pantalla principal
 ───────────────────────────────────────────────────── */
 const PedidosScreen = () => {
   const [pedidos, setPedidos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [procesando, setProcesando] = useState(false);
+  const [selectedPedido, setSelectedPedido] = useState(null);
+  const [showModal, setShowModal] = useState(false);
   const { socket, connected } = useSocket();
   const { isAdmin } = useAuth();
 
-  // El despensador NO ve precios
   const hidePrices = !isAdmin;
 
-  /* ── Cargar detalles completos de un pedido por ID ── */
+  // Enriquecer un pedido con detalles completos
   const enrichPedido = useCallback(async (pedido) => {
     try {
       const res = await ventasService.getById(pedido.id_venta);
@@ -229,7 +216,7 @@ const PedidosScreen = () => {
     }
   }, []);
 
-  /* ── Carga inicial: trae lista y luego enriquece cada pedido ── */
+  // Cargar pedidos iniciales
   const loadPedidos = useCallback(async () => {
     try {
       setLoading(true);
@@ -237,7 +224,7 @@ const PedidosScreen = () => {
       const raw = response.data?.data || response.data || [];
       const lista = Array.isArray(raw) ? raw : [];
 
-      // Enriquecer cada pedido con sus detalles completos
+      // Enriquecer cada pedido con detalles completos
       const enriquecidos = await Promise.all(lista.map(enrichPedido));
       setPedidos(enriquecidos);
     } catch (error) {
@@ -252,7 +239,7 @@ const PedidosScreen = () => {
     loadPedidos();
   }, [loadPedidos]);
 
-  /* ── Socket: nuevo pedido ── */
+  // Sockets
   useEffect(() => {
     if (!socket || !connected) return;
 
@@ -265,13 +252,11 @@ const PedidosScreen = () => {
           <strong>¡Nuevo pedido!</strong>
           <div>#{pedidoSocket.numero_factura || pedidoSocket.id_venta}</div>
         </div>,
-        { autoClose: 6000, position: 'top-right' }
+        { autoClose: 6000 }
       );
 
       if (!['PENDIENTE', 'EN_PROCESO'].includes(pedidoSocket.estado_venta)) return;
 
-      // Si el socket ya trae items completos, usarlos directamente
-      // Si no, enriquecer desde la API
       const tieneItems = (pedidoSocket.items || pedidoSocket.detalles || []).length > 0;
       const pedidoFinal = tieneItems ? pedidoSocket : await enrichPedido(pedidoSocket);
 
@@ -285,10 +270,10 @@ const PedidosScreen = () => {
     const handleEstadoActualizado = (data) => {
       setPedidos(prev => {
         if (data.estado_venta === 'COMPLETADA' || data.estado_venta === 'CANCELADA') {
-          return prev.filter(p => p.id_venta !== data.id_venta && p.id_venta !== parseInt(data.id_venta));
+          return prev.filter(p => p.id_venta !== data.id_venta);
         }
         return prev.map(p =>
-          p.id_venta === data.id_venta || p.id_venta === parseInt(data.id_venta)
+          p.id_venta === data.id_venta
             ? { ...p, estado_venta: data.estado_venta }
             : p
         );
@@ -304,7 +289,7 @@ const PedidosScreen = () => {
     };
   }, [socket, connected, enrichPedido]);
 
-  /* ── Cambiar estado ── */
+  // Cambiar estado
   const handleCambiarEstado = async (pedidoId, nuevoEstado) => {
     try {
       setProcesando(true);
@@ -321,6 +306,10 @@ const PedidosScreen = () => {
         }
         return prev.map(p => p.id_venta === pedidoId ? { ...p, estado_venta: nuevoEstado } : p);
       });
+
+      // Cerrar modal si estaba abierto
+      setShowModal(false);
+      setSelectedPedido(null);
     } catch (error) {
       console.error('Error al cambiar estado:', error);
       toast.error('Error al cambiar estado del pedido');
@@ -334,30 +323,153 @@ const PedidosScreen = () => {
     await handleCambiarEstado(pedidoId, 'CANCELADA');
   };
 
+  const handleVerDetalle = async (pedido) => {
+    // Si el pedido no tiene items, lo enriquecemos
+    if (!pedido.items && !pedido.detalles) {
+      const pedidoCompleto = await enrichPedido(pedido);
+      setSelectedPedido(pedidoCompleto);
+    } else {
+      setSelectedPedido(pedido);
+    }
+    setShowModal(true);
+  };
+
   const pedidosPendientes = pedidos.filter(p => p.estado_venta === 'PENDIENTE');
   const pedidosEnProceso = pedidos.filter(p => p.estado_venta === 'EN_PROCESO');
 
   return (
     <>
+      {/* Estilos adicionales para la nueva interfaz */}
       <style>{`
-        /* ── Layout ── */
-        .pedidos-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          margin-bottom: 1.5rem;
-          flex-wrap: wrap;
-          gap: 0.75rem;
+        /* ── Resumen card ── */
+        .pedido-resumen {
+          background: #fff;
+          border-radius: 14px;
+          border: 1.5px solid rgba(123,47,190,0.1);
+          padding: 12px 16px;
+          margin-bottom: 10px;
+          box-shadow: 0 2px 8px rgba(123,47,190,0.04);
+          transition: all 0.2s ease;
         }
-        .pedidos-title {
+        .pedido-resumen:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 6px 16px rgba(123,47,190,0.1);
+        }
+        .pedido-resumen.pendiente {
+          border-left: 4px solid #f59e0b;
+        }
+        .pedido-resumen.proceso {
+          border-left: 4px solid #4DCFBD;
+        }
+        .pedido-resumen-numero {
           font-family: 'Syne', sans-serif;
           font-weight: 800;
-          font-size: 1.5rem;
-          color: var(--text-primary, #1a0a2e);
+          font-size: clamp(1rem, 3vw, 1.2rem);
+          color: #1a0a2e;
+        }
+        .pedido-resumen-meta {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.75rem 1rem;
+          font-size: 0.75rem;
+          color: #6c757d;
+          margin-top: 4px;
+        }
+        .estado-badge-mini {
+          font-size: 0.6rem;
+          font-weight: 700;
+          padding: 0.3rem 0.6rem;
+          border-radius: 20px;
+        }
+        .estado-badge-mini.pendiente {
+          background: rgba(245,158,11,0.15) !important;
+          color: #b45309 !important;
+        }
+        .estado-badge-mini.proceso {
+          background: rgba(77,207,189,0.15) !important;
+          color: #0e7490 !important;
+        }
+        .btn-ver-detalle {
+          width: 42px;
+          height: 42px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-color: rgba(123,47,190,0.2);
+          color: #7B2FBE;
+        }
+        .btn-ver-detalle:hover {
+          background: #7B2FBE;
+          color: #fff;
+          border-color: #7B2FBE;
+        }
+
+        /* ── Modal de detalle ── */
+        .detalle-items-container {
+          max-height: 50vh;
+          overflow-y: auto;
+          padding-right: 6px;
+        }
+        .detalle-item-card {
+          border-left: 4px solid #7B2FBE;
+        }
+        .detalle-item-img {
+          width: 70px;
+          height: 70px;
+          object-fit: cover;
+          border-radius: 10px;
+          border: 2px solid #dee2e6;
+        }
+        .detalle-item-img-placeholder {
+          width: 70px;
+          height: 70px;
+          border-radius: 10px;
+          background: linear-gradient(135deg, #ede4f8, #d8c8f0);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 2rem;
+          color: #9580b0;
+          border: 2px solid #dee2e6;
+        }
+
+        /* ── Scroll personalizado ── */
+        .col-scroll-body {
+          max-height: 70vh;
+          overflow-y: auto;
+          padding: 12px;
+        }
+        .col-scroll-body::-webkit-scrollbar {
+          width: 4px;
+        }
+        .col-scroll-body::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .col-scroll-body::-webkit-scrollbar-thumb {
+          background: rgba(123,47,190,0.2);
+          border-radius: 4px;
+        }
+
+        /* ── Empty state ── */
+        .col-empty {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 3rem 1rem;
+          color: #94a3b8;
+        }
+        .col-empty i {
+          font-size: 3rem;
+          margin-bottom: 0.75rem;
+          opacity: 0.4;
+        }
+        .col-empty p {
+          font-size: 0.9rem;
           margin: 0;
         }
-        .pedidos-title i { color: var(--brand-purple, #7B2FBE); }
 
+        /* ── Header de columnas ── */
         .col-estado-header {
           display: flex;
           align-items: center;
@@ -377,268 +489,6 @@ const PedidosScreen = () => {
           color: #fff;
         }
 
-        .col-scroll-body {
-          max-height: 75vh;
-          overflow-y: auto;
-          padding: 12px;
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        }
-        .col-scroll-body::-webkit-scrollbar { width: 4px; }
-        .col-scroll-body::-webkit-scrollbar-track { background: transparent; }
-        .col-scroll-body::-webkit-scrollbar-thumb { background: rgba(123,47,190,0.2); border-radius: 4px; }
-
-        .col-empty {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          padding: 3rem 1rem;
-          color: #94a3b8;
-        }
-        .col-empty i { font-size: 3rem; margin-bottom: 0.75rem; opacity: 0.4; }
-        .col-empty p { font-size: 0.9rem; margin: 0; }
-
-        /* ── Pedido card ── */
-        .pedido-card {
-          background: #fff;
-          border-radius: 14px;
-          border: 1.5px solid rgba(123,47,190,0.1);
-          overflow: hidden;
-          box-shadow: 0 2px 12px rgba(123,47,190,0.06);
-          transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
-        .pedido-card:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 6px 20px rgba(123,47,190,0.12);
-        }
-        .pedido-card.pendiente { border-left: 4px solid #f59e0b; }
-        .pedido-card.en-proceso { border-left: 4px solid #4DCFBD; }
-
-        .pedido-card-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          padding: 14px 16px 10px;
-          border-bottom: 1px solid rgba(123,47,190,0.06);
-          background: #faf8fe;
-        }
-        .pedido-factura {
-          font-family: 'Syne', sans-serif;
-          font-weight: 800;
-          font-size: 1rem;
-          color: #1a0a2e;
-        }
-        .pedido-hora {
-          font-size: 0.75rem;
-          color: #94a3b8;
-          margin-top: 2px;
-        }
-        .pedido-cliente {
-          font-size: 0.8rem;
-          color: #7B2FBE;
-          margin-top: 3px;
-          font-weight: 600;
-        }
-
-        .estado-badge {
-          font-family: 'DM Sans', sans-serif;
-          font-weight: 700;
-          font-size: 0.7rem;
-          letter-spacing: 0.06em;
-          padding: 5px 10px;
-          border-radius: 999px;
-          border: none;
-        }
-        .estado-badge.pendiente {
-          background: rgba(245,158,11,0.15) !important;
-          color: #b45309 !important;
-        }
-        .estado-badge.proceso {
-          background: rgba(77,207,189,0.15) !important;
-          color: #0e7490 !important;
-        }
-
-        .pedido-total {
-          font-family: 'Syne', sans-serif;
-          font-weight: 800;
-          font-size: 1.1rem;
-          color: #7B2FBE;
-          margin-top: 6px;
-        }
-        .pedido-items-count {
-          font-size: 0.8rem;
-          color: #94a3b8;
-          margin-top: 6px;
-          font-weight: 600;
-        }
-        .moneda-tag {
-          font-size: 0.65rem;
-          color: #9580b0;
-          font-weight: 600;
-          vertical-align: middle;
-        }
-
-        /* ── Items list ── */
-        .pedido-items-list {
-          padding: 10px 14px;
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-        }
-        .pedido-items-empty {
-          font-size: 0.82rem;
-          color: #94a3b8;
-          padding: 8px 0;
-          text-align: center;
-        }
-
-        /* ── Item card ── */
-        .pedido-item-card {
-          display: flex;
-          align-items: flex-start;
-          gap: 12px;
-          padding: 10px 12px;
-          background: #f8f5fe;
-          border-radius: 10px;
-          border: 1px solid rgba(123,47,190,0.07);
-        }
-
-        .pedido-item-img-wrap { flex-shrink: 0; }
-        .pedido-item-img {
-          width: 64px;
-          height: 64px;
-          object-fit: cover;
-          border-radius: 10px;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-        .pedido-item-img-placeholder {
-          width: 64px;
-          height: 64px;
-          border-radius: 10px;
-          background: linear-gradient(135deg, #ede4f8, #d8c8f0);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: #9580b0;
-          font-size: 1.6rem;
-        }
-
-        .pedido-item-info { flex: 1; min-width: 0; }
-        .pedido-item-nombre {
-          font-family: 'Syne', sans-serif;
-          font-weight: 700;
-          font-size: 0.9rem;
-          color: #1a0a2e;
-          margin-bottom: 2px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-        .pedido-item-cantidad {
-          font-size: 0.75rem;
-          color: #9580b0;
-          margin-bottom: 6px;
-        }
-
-        .pedido-item-extras { margin-top: 5px; }
-        .extras-label {
-          font-size: 0.68rem;
-          color: #9580b0;
-          font-weight: 600;
-          text-transform: uppercase;
-          letter-spacing: 0.04em;
-          display: block;
-          margin-bottom: 3px;
-        }
-        .extras-badges { display: flex; flex-wrap: wrap; gap: 4px; }
-        .extra-badge {
-          display: inline-flex;
-          align-items: center;
-          padding: 3px 8px;
-          border-radius: 999px;
-          font-size: 0.72rem;
-          font-weight: 600;
-          font-family: 'DM Sans', sans-serif;
-        }
-        .extra-badge.sabor {
-          background: rgba(14,165,233,0.12);
-          color: #0369a1;
-        }
-        .extra-badge.topping {
-          background: rgba(123,47,190,0.1);
-          color: #5E1F96;
-        }
-        .extra-badge.sirope {
-          background: rgba(245,158,11,0.12);
-          color: #92400e;
-        }
-
-        .pedido-item-precio {
-          flex-shrink: 0;
-          font-family: 'Syne', sans-serif;
-          font-weight: 800;
-          font-size: 0.9rem;
-          color: #7B2FBE;
-          white-space: nowrap;
-          margin-top: 2px;
-        }
-
-        /* ── Acciones ── */
-        .pedido-acciones {
-          display: flex;
-          gap: 8px;
-          padding: 12px 14px;
-          border-top: 1px solid rgba(123,47,190,0.06);
-          background: #faf8fe;
-        }
-        .btn-accion {
-          flex: 1;
-          font-family: 'DM Sans', sans-serif;
-          font-weight: 700;
-          font-size: 0.85rem;
-          border: none;
-          border-radius: 9px;
-          padding: 9px 12px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transition: all 0.2s ease;
-        }
-        .btn-accion.iniciar {
-          background: linear-gradient(135deg, #7B2FBE, #5E1F96);
-          color: #fff;
-          box-shadow: 0 3px 10px rgba(123,47,190,0.3);
-          flex: 2;
-        }
-        .btn-accion.iniciar:hover {
-          filter: brightness(1.1);
-          transform: translateY(-1px);
-          box-shadow: 0 5px 16px rgba(123,47,190,0.4);
-        }
-        .btn-accion.completar {
-          background: linear-gradient(135deg, #4DCFBD, #0ea5e9);
-          color: #fff;
-          box-shadow: 0 3px 10px rgba(77,207,189,0.3);
-          flex: 2;
-        }
-        .btn-accion.completar:hover {
-          filter: brightness(1.06);
-          transform: translateY(-1px);
-          box-shadow: 0 5px 16px rgba(77,207,189,0.4);
-        }
-        .btn-accion.cancelar {
-          background: rgba(239,68,68,0.08);
-          color: #dc2626;
-          border: 1.5px solid rgba(239,68,68,0.2);
-        }
-        .btn-accion.cancelar:hover {
-          background: rgba(239,68,68,0.15);
-          border-color: rgba(239,68,68,0.35);
-        }
-        .btn-accion:disabled { opacity: 0.6; cursor: not-allowed; transform: none !important; }
-
         /* ── Connection badge ── */
         .conn-badge {
           display: inline-flex;
@@ -648,7 +498,6 @@ const PedidosScreen = () => {
           border-radius: 999px;
           font-size: 0.75rem;
           font-weight: 700;
-          font-family: 'DM Sans', sans-serif;
           border: 1.5px solid;
         }
         .conn-badge.on {
@@ -685,17 +534,34 @@ const PedidosScreen = () => {
           margin-bottom: 0.75rem;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes pulse-dot { 0%,100%{opacity:1;} 50%{opacity:0.5;} }
 
-        /* ── Responsive ── */
-        @media (max-width: 576px) {
-          .pedido-item-img, .pedido-item-img-placeholder { width: 52px; height: 52px; }
-          .pedido-item-nombre { font-size: 0.85rem; }
-          .btn-accion { font-size: 0.8rem; padding: 8px 8px; }
+        /* ── Responsive para tablet ── */
+        @media (max-width: 768px) {
+          .col-scroll-body {
+            max-height: 60vh;
+          }
+          .pedido-resumen {
+            padding: 10px 12px;
+          }
+          .pedido-resumen-meta {
+            gap: 0.5rem;
+            font-size: 0.7rem;
+          }
+          .btn-ver-detalle {
+            width: 38px;
+            height: 38px;
+          }
+          .detalle-item-img,
+          .detalle-item-img-placeholder {
+            width: 60px;
+            height: 60px;
+          }
         }
       `}</style>
 
       {/* Header */}
-      <div className="pedidos-header">
+      <div className="d-flex flex-wrap align-items-center justify-content-between mb-3">
         <h2 className="pedidos-title">
           <i className="bi bi-clipboard-check me-2" />
           Gestión de Pedidos
@@ -726,7 +592,7 @@ const PedidosScreen = () => {
       )}
 
       <Row className="g-3">
-        {/* ── Pendientes ── */}
+        {/* Pendientes */}
         <Col lg={6}>
           <Card className="border-0 shadow-sm h-100 overflow-hidden">
             <div className="col-estado-header pendiente">
@@ -740,7 +606,7 @@ const PedidosScreen = () => {
               {loading ? (
                 <div className="pedidos-spinner">
                   <div className="ring" />
-                  <span style={{ fontSize: '0.85rem' }}>Cargando pedidos...</span>
+                  <span>Cargando pedidos...</span>
                 </div>
               ) : pedidosPendientes.length === 0 ? (
                 <div className="col-empty">
@@ -749,12 +615,10 @@ const PedidosScreen = () => {
                 </div>
               ) : (
                 pedidosPendientes.map(pedido => (
-                  <PedidoCard
+                  <PedidoResumen
                     key={pedido.id_venta}
                     pedido={pedido}
-                    onCambiarEstado={handleCambiarEstado}
-                    onCancelar={handleCancelar}
-                    procesando={procesando}
+                    onVerDetalle={handleVerDetalle}
                     hidePrices={hidePrices}
                   />
                 ))
@@ -763,7 +627,7 @@ const PedidosScreen = () => {
           </Card>
         </Col>
 
-        {/* ── En Proceso ── */}
+        {/* En Proceso */}
         <Col lg={6}>
           <Card className="border-0 shadow-sm h-100 overflow-hidden">
             <div className="col-estado-header proceso">
@@ -777,7 +641,7 @@ const PedidosScreen = () => {
               {loading ? (
                 <div className="pedidos-spinner">
                   <div className="ring" />
-                  <span style={{ fontSize: '0.85rem' }}>Cargando pedidos...</span>
+                  <span>Cargando pedidos...</span>
                 </div>
               ) : pedidosEnProceso.length === 0 ? (
                 <div className="col-empty">
@@ -786,12 +650,10 @@ const PedidosScreen = () => {
                 </div>
               ) : (
                 pedidosEnProceso.map(pedido => (
-                  <PedidoCard
+                  <PedidoResumen
                     key={pedido.id_venta}
                     pedido={pedido}
-                    onCambiarEstado={handleCambiarEstado}
-                    onCancelar={handleCancelar}
-                    procesando={procesando}
+                    onVerDetalle={handleVerDetalle}
                     hidePrices={hidePrices}
                   />
                 ))
@@ -800,6 +662,17 @@ const PedidosScreen = () => {
           </Card>
         </Col>
       </Row>
+
+      {/* Modal de detalle */}
+      <PedidoDetalleModal
+        show={showModal}
+        onHide={() => setShowModal(false)}
+        pedido={selectedPedido}
+        onCambiarEstado={handleCambiarEstado}
+        onCancelar={handleCancelar}
+        procesando={procesando}
+        hidePrices={hidePrices}
+      />
     </>
   );
 };
