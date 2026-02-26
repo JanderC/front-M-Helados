@@ -348,7 +348,7 @@ const NuevaVentaScreen = () => {
         /* Layout principal */
         .nv-layout {
           display: grid;
-          grid-template-columns: 1fr 360px;
+          grid-template-columns: 1fr 460px;
           gap: 16px;
           align-items: start;
         }
@@ -401,8 +401,8 @@ const NuevaVentaScreen = () => {
 
         .productos-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
-          gap: 14px;
+          grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+          gap: 10px;
         }
 
         /* Tarjeta de producto */
@@ -431,58 +431,57 @@ const NuevaVentaScreen = () => {
         }
         .producto-img {
           width: 100%;
-          aspect-ratio: 4/3;
+          aspect-ratio: 3/2;
           object-fit: cover;
           background: linear-gradient(135deg, #f5f0fb, #ede4f8);
         }
         .producto-img-placeholder {
           width: 100%;
-          aspect-ratio: 4/3;
+          aspect-ratio: 3/2;
           background: linear-gradient(135deg, #f5f0fb, #ede4f8);
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: clamp(2.2rem, 5vw, 3rem);
+          font-size: clamp(1.6rem, 4vw, 2.2rem);
         }
         .producto-body {
-          padding: 10px 12px 12px;
+          padding: 8px 10px 10px;
           flex: 1;
           display: flex;
           flex-direction: column;
-          gap: 4px;
+          gap: 3px;
           background: #fff;
           border-radius: 0 0 14px 14px;
         }
         .producto-nombre {
           font-family: 'DM Sans', sans-serif;
           font-weight: 700;
-          font-size: 0.88rem;
+          font-size: 0.82rem;
           color: #1a0a2e;
           line-height: 1.3;
           display: -webkit-box;
           -webkit-line-clamp: 2;
           -webkit-box-orient: vertical;
           overflow: hidden;
-          min-height: 2.3em;
+          min-height: 2.1em;
         }
         .producto-precio {
           font-family: 'Syne', sans-serif;
           font-weight: 800;
-          font-size: 1.15rem;
+          font-size: 1rem;
           color: #7B2FBE;
-          margin-top: 2px;
+          margin-top: 1px;
         }
-        /* Botón en flujo normal, debajo del precio — no absoluto */
         .producto-add-btn {
-          margin-top: 8px;
+          margin-top: 6px;
           width: 100%;
-          height: 40px;
-          border-radius: 10px;
+          height: 36px;
+          border-radius: 9px;
           background: linear-gradient(135deg, #7B2FBE, #5E1F96);
           border: none;
           color: #fff;
           display: flex; align-items: center; justify-content: center;
-          font-size: 1.4rem;
+          font-size: 1.2rem;
           font-weight: 700;
           box-shadow: 0 3px 10px rgba(123,47,190,0.35);
           transition: all 0.18s;
@@ -506,7 +505,7 @@ const NuevaVentaScreen = () => {
           overflow: hidden;
           position: sticky;
           top: 16px;
-          max-height: calc(100vh - 92px);
+          max-height: calc(100vh - 80px);
         }
 
         .carrito-header {
@@ -647,10 +646,10 @@ const NuevaVentaScreen = () => {
 
         .carrito-item {
           background: #f9f7fd;
-          border-radius: 12px;
-          padding: 10px 12px;
-          margin-bottom: 8px;
-          border: 1px solid rgba(123,47,190,0.08);
+          border-radius: 14px;
+          padding: 14px 14px;
+          margin-bottom: 10px;
+          border: 1.5px solid rgba(123,47,190,0.08);
           transition: all 0.2s;
         }
         .carrito-item:hover { border-color: rgba(123,47,190,0.2); }
@@ -660,12 +659,12 @@ const NuevaVentaScreen = () => {
           align-items: flex-start;
           justify-content: space-between;
           gap: 8px;
-          margin-bottom: 6px;
+          margin-bottom: 8px;
         }
         .carrito-item-nombre {
           font-family: 'DM Sans', sans-serif;
           font-weight: 700;
-          font-size: 0.92rem;
+          font-size: 1.05rem;
           color: #1a0a2e;
           line-height: 1.3;
           flex: 1;
@@ -673,21 +672,21 @@ const NuevaVentaScreen = () => {
         .carrito-item-precio-unit {
           font-family: 'Syne', sans-serif;
           font-weight: 700;
-          font-size: 0.8rem;
+          font-size: 0.88rem;
           color: #7B2FBE;
         }
         .item-delete-btn {
           background: rgba(239,68,68,0.08);
           border: none;
-          border-radius: 9px;
+          border-radius: 10px;
           color: #ef4444;
           cursor: pointer;
-          padding: 6px 10px;
-          font-size: 1rem;
+          padding: 8px 12px;
+          font-size: 1.1rem;
           transition: all 0.15s;
           flex-shrink: 0;
           touch-action: manipulation;
-          min-width: 36px; min-height: 36px;
+          min-width: 42px; min-height: 42px;
           display: flex; align-items: center; justify-content: center;
         }
         .item-delete-btn:hover { background: rgba(239,68,68,0.15); }
@@ -782,17 +781,17 @@ const NuevaVentaScreen = () => {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          margin-top: 10px;
-          padding-top: 8px;
+          margin-top: 12px;
+          padding-top: 10px;
           border-top: 1px solid rgba(123,47,190,0.07);
         }
         .qty-btn {
-          width: 38px; height: 38px;
-          border-radius: 10px;
+          width: 44px; height: 44px;
+          border-radius: 12px;
           border: 1.5px solid rgba(123,47,190,0.2);
           background: #fff;
           color: #7B2FBE;
-          font-size: 1.3rem;
+          font-size: 1.5rem;
           font-weight: 700;
           cursor: pointer;
           display: flex; align-items: center; justify-content: center;
@@ -807,15 +806,15 @@ const NuevaVentaScreen = () => {
         .qty-num {
           font-family: 'Syne', sans-serif;
           font-weight: 800;
-          font-size: 1.1rem;
+          font-size: 1.3rem;
           color: #1a0a2e;
-          min-width: 32px;
+          min-width: 36px;
           text-align: center;
         }
         .item-subtotal {
           font-family: 'Syne', sans-serif;
           font-weight: 800;
-          font-size: 1.05rem;
+          font-size: 1.2rem;
           color: #7B2FBE;
         }
 
@@ -856,18 +855,18 @@ const NuevaVentaScreen = () => {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          margin-bottom: 12px;
+          margin-bottom: 14px;
         }
         .total-label {
           font-family: 'DM Sans', sans-serif;
           font-weight: 600;
           color: #5a4a72;
-          font-size: 0.9rem;
+          font-size: 1rem;
         }
         .total-amount {
           font-family: 'Syne', sans-serif;
           font-weight: 800;
-          font-size: 1.5rem;
+          font-size: 1.8rem;
           color: #1a0a2e;
         }
 
@@ -922,8 +921,8 @@ const NuevaVentaScreen = () => {
           padding: 10px 14px;
           margin-top: 6px;
         }
-        .vuelto-label { font-family: 'DM Sans', sans-serif; font-weight: 700; color: #10b981; font-size: 0.85rem; }
-        .vuelto-amount { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.3rem; color: #10b981; }
+        .vuelto-label { font-family: 'DM Sans', sans-serif; font-weight: 700; color: #10b981; font-size: 0.95rem; }
+        .vuelto-amount { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.6rem; color: #10b981; }
 
         /* Botón procesar */
         .procesar-btn {

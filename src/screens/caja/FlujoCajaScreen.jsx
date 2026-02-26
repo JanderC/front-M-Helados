@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Row, Col, Card, Button, Form, Table, Badge, Alert, Spinner } from 'react-bootstrap';
+import { useState, useEffect, useCallback } from 'react';
+import { Row, Col, Card, Button, Form, Table, Badge, Alert, Spinner, Pagination } from 'react-bootstrap';
 import { cajaService } from '../../api/services/cajaService';
 import { ventasService } from '../../api/services/ventasService';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
@@ -9,11 +9,15 @@ import CerrarCajaModal from '../../components/caja/CerrarCajaModal';
 import TransaccionModal from '../../components/caja/TransaccionModal';
 import DetalleVentaModal from '../../components/ventas/DetalleVentaModal';
 
+const VENTAS_POR_PAGINA = 15;
+
 const FlujoCajaScreen = () => {
   const [estadoCaja, setEstadoCaja] = useState(null);
   const [flujo, setFlujo] = useState([]);
   const [resumenVentas, setResumenVentas] = useState(null);
   const [ventasDelDia, setVentasDelDia] = useState([]);
+  const [totalVentasCount, setTotalVentasCount] = useState(0);
+  const [paginaActual, setPaginaActual] = useState(1);
   const [loadingVentas, setLoadingVentas] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showAbrirModal, setShowAbrirModal] = useState(false);
@@ -33,6 +37,7 @@ const FlujoCajaScreen = () => {
   const loadData = async () => {
     try {
       setLoading(true);
+      setPaginaActual(1);
       const [estadoRes, flujoRes, resumenRes] = await Promise.allSettled([
         cajaService.getEstado(),
         cajaService.getFlujo(filtros),
@@ -56,8 +61,7 @@ const FlujoCajaScreen = () => {
         setResumenVentas(resumenData);
       }
 
-      // ✅ Cargar ventas del período filtrado
-      await loadVentasDelDia();
+      await loadVentasPagina(1);
 
     } catch (error) {
       console.error('Error al cargar datos:', error);
@@ -67,23 +71,42 @@ const FlujoCajaScreen = () => {
     }
   };
 
-  const loadVentasDelDia = async () => {
+  const loadVentasPagina = async (pagina) => {
     try {
       setLoadingVentas(true);
       const params = {
-        limit: 100,
+        limit: VENTAS_POR_PAGINA,
+        offset: (pagina - 1) * VENTAS_POR_PAGINA,
       };
       if (filtros.fechaInicio) params.fecha_inicio = filtros.fechaInicio;
       if (filtros.fechaFin) params.fecha_fin = filtros.fechaFin + 'T23:59:59';
 
       const response = await ventasService.getAll(params);
-      const data = response.data?.data || response.data || [];
-      setVentasDelDia(Array.isArray(data) ? data : []);
+      const rawData = response.data?.data || response.data || {};
+
+      // Soporta respuesta paginada {items, total} o array simple
+      if (Array.isArray(rawData)) {
+        setVentasDelDia(rawData);
+        // Si la API no devuelve total, usar el largo (solo página actual)
+        setTotalVentasCount(rawData.length < VENTAS_POR_PAGINA
+          ? (pagina - 1) * VENTAS_POR_PAGINA + rawData.length
+          : (pagina) * VENTAS_POR_PAGINA + 1); // indica que hay más
+      } else {
+        const items = rawData.items || rawData.ventas || rawData.results || [];
+        const total = rawData.total || rawData.count || items.length;
+        setVentasDelDia(Array.isArray(items) ? items : []);
+        setTotalVentasCount(total);
+      }
     } catch (error) {
-      console.error('Error cargando ventas del día:', error);
+      console.error('Error cargando ventas:', error);
     } finally {
       setLoadingVentas(false);
     }
+  };
+
+  const handleCambiarPagina = (pagina) => {
+    setPaginaActual(pagina);
+    loadVentasPagina(pagina);
   };
 
   const handleVerDetalle = (id_venta) => {
@@ -97,28 +120,37 @@ const FlujoCajaScreen = () => {
 
   const calcularTotales = () => {
     const totales = {};
-
     if (Array.isArray(flujo)) {
       flujo.forEach(item => {
         const tipo = item.tipo_transaccion;
         const moneda = item.codigo_moneda;
         const monto = parseFloat(item.monto) || 0;
-
         if (!totales[moneda]) totales[moneda] = 0;
-
-        if (tipo === 'INGRESO') {
-          totales[moneda] += monto;
-        } else if (tipo === 'EGRESO') {
-          totales[moneda] -= monto;
-        }
+        if (tipo === 'INGRESO') totales[moneda] += monto;
+        else if (tipo === 'EGRESO') totales[moneda] -= monto;
       });
     }
+    return totales;
+  };
 
+  // Totales reales desde resumenVentas del backend (no desde la página actual)
+  const calcularTotalesVentas = () => {
+    if (!resumenVentas) return {};
+    const totales = {};
+    if (parseFloat(resumenVentas.total_usd_original) > 0)
+      totales['USD'] = parseFloat(resumenVentas.total_usd_original);
+    if (parseFloat(resumenVentas.total_ves) > 0)
+      totales['VES'] = parseFloat(resumenVentas.total_ves);
+    if (parseFloat(resumenVentas.total_cop) > 0)
+      totales['COP'] = parseFloat(resumenVentas.total_cop);
     return totales;
   };
 
   const totales = calcularTotales();
+  const totalesVentas = calcularTotalesVentas();
   const cajaAbierta = estadoCaja?.estado === 'ABIERTA' || estadoCaja?.abierta === true;
+
+  const totalPaginas = Math.ceil(totalVentasCount / VENTAS_POR_PAGINA);
 
   return (
     <div>
@@ -181,7 +213,6 @@ const FlujoCajaScreen = () => {
                       </strong>
                     </Col>
                     <Col md={3}>
-                      {/* ✅ FIX: Mostrar ventas del día desde estado caja */}
                       {estadoCaja.ventas_dia && (
                         <div>
                           <small className="text-muted d-block">Ventas desde apertura</small>
@@ -216,7 +247,7 @@ const FlujoCajaScreen = () => {
         </Col>
       </Row>
 
-      {/* ✅ FIX: Resumen de Ventas por período filtrado */}
+      {/* Resumen de Ventas */}
       <Row className="mb-4">
         <Col md={4}>
           <Card className="border-0 shadow-sm h-100">
@@ -310,7 +341,7 @@ const FlujoCajaScreen = () => {
         </Card.Body>
       </Card>
 
-      {/* ✅ NUEVO - Tabla de Ventas del Período */}
+      {/* Tabla de Ventas del Período con paginación */}
       <Card className="border-0 shadow-sm mb-4">
         <Card.Header className="bg-white d-flex justify-content-between align-items-center">
           <h5 className="mb-0">
@@ -318,7 +349,7 @@ const FlujoCajaScreen = () => {
             Ventas del Período
           </h5>
           <Badge bg="primary" pill>
-            {ventasDelDia.length} ventas
+            {resumenVentas?.total_ventas ?? totalVentasCount} ventas totales
           </Badge>
         </Card.Header>
         <Card.Body className="p-0">
@@ -333,88 +364,123 @@ const FlujoCajaScreen = () => {
               No hay ventas en el período seleccionado
             </div>
           ) : (
-            <div className="table-responsive">
-              <Table hover className="mb-0">
-                <thead className="table-light">
-                  <tr>
-                    <th>Factura</th>
-                    <th>Hora</th>
-                    <th>Cliente</th>
-                    <th>Moneda</th>
-                    <th>Total</th>
-                    <th>Estado</th>
-                    <th className="text-center">Detalle</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ventasDelDia.map((venta) => {
-                    const colorEstado = {
-                      COMPLETADA: 'success',
-                      PENDIENTE: 'warning',
-                      EN_PROCESO: 'info',
-                      CANCELADA: 'danger',
-                    };
-                    return (
-                      <tr key={venta.id_venta}>
-                        <td className="fw-bold text-primary">{venta.numero_factura}</td>
-                        <td className="small text-muted">{formatDateTime(venta.fecha_venta)}</td>
-                        <td>{venta.nombre_cliente || <span className="text-muted">—</span>}</td>
-                        <td>
-                          <Badge bg="secondary">{venta.codigo_moneda}</Badge>
-                        </td>
-                        <td className="fw-bold">
-                          {formatCurrency(venta.total, venta.codigo_moneda)}
-                        </td>
-                        <td>
-                          <Badge bg={colorEstado[venta.estado_venta] || 'secondary'}>
-                            {venta.estado_venta}
-                          </Badge>
-                        </td>
-                        <td className="text-center">
-                          <Button
-                            variant="outline-primary"
-                            size="sm"
-                            onClick={() => handleVerDetalle(venta.id_venta)}
-                          >
-                            <i className="bi bi-eye me-1"></i>
-                            Ver
-                          </Button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-                {/* Totales por moneda */}
-                <tfoot className="table-light">
-                  <tr>
-                    <td colSpan="4" className="text-end fw-bold">
-                      Total completadas:
-                    </td>
-                    <td colSpan="3">
-                      {(() => {
-                        const completadas = ventasDelDia.filter(v => v.estado_venta === 'COMPLETADA');
-                        const porMoneda = completadas.reduce((acc, v) => {
-                          const m = v.codigo_moneda;
-                          acc[m] = (acc[m] || 0) + parseFloat(v.total);
-                          return acc;
-                        }, {});
-                        return Object.entries(porMoneda).map(([moneda, total]) => (
-                          <div key={moneda} className="fw-bold text-success">
-                            {formatCurrency(total, moneda)}
-                            <Badge bg="secondary" className="ms-1 small">{moneda}</Badge>
-                          </div>
-                        ));
-                      })()}
-                    </td>
-                  </tr>
-                </tfoot>
-              </Table>
-            </div>
+            <>
+              {/* Tabla con altura máxima y scroll interno */}
+              <div style={{ maxHeight: '420px', overflowY: 'auto' }}>
+                <Table hover className="mb-0" style={{ fontSize: '0.875rem' }}>
+                  <thead className="table-light" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
+                    <tr>
+                      <th>Factura</th>
+                      <th>Hora</th>
+                      <th>Cliente</th>
+                      <th>Moneda</th>
+                      <th>Total</th>
+                      <th>Estado</th>
+                      <th className="text-center">Detalle</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ventasDelDia.map((venta) => {
+                      const colorEstado = {
+                        COMPLETADA: 'success',
+                        PENDIENTE: 'warning',
+                        EN_PROCESO: 'info',
+                        CANCELADA: 'danger',
+                      };
+                      return (
+                        <tr key={venta.id_venta}>
+                          <td className="fw-bold text-primary">{venta.numero_factura}</td>
+                          <td className="small text-muted">{formatDateTime(venta.fecha_venta)}</td>
+                          <td>{venta.nombre_cliente || <span className="text-muted">—</span>}</td>
+                          <td>
+                            <Badge bg="secondary">{venta.codigo_moneda}</Badge>
+                          </td>
+                          <td className="fw-bold">
+                            {formatCurrency(venta.total, venta.codigo_moneda)}
+                          </td>
+                          <td>
+                            <Badge bg={colorEstado[venta.estado_venta] || 'secondary'}>
+                              {venta.estado_venta}
+                            </Badge>
+                          </td>
+                          <td className="text-center">
+                            <Button
+                              variant="outline-primary"
+                              size="sm"
+                              onClick={() => handleVerDetalle(venta.id_venta)}
+                            >
+                              <i className="bi bi-eye me-1"></i>
+                              Ver
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </Table>
+              </div>
+
+              {/* Footer con totales REALES del backend + paginación */}
+              <div className="px-3 py-2 border-top bg-light d-flex justify-content-between align-items-center flex-wrap gap-2">
+                {/* Totales reales */}
+                <div className="d-flex gap-3 align-items-center flex-wrap">
+                  <span className="fw-bold text-muted small">Total completadas:</span>
+                  {Object.entries(totalesVentas).length > 0
+                    ? Object.entries(totalesVentas).map(([moneda, total]) => (
+                        <span key={moneda} className="fw-bold text-success">
+                          {formatCurrency(total, moneda)}{' '}
+                          <Badge bg="secondary" className="small">{moneda}</Badge>
+                        </span>
+                      ))
+                    : <span className="text-muted small">Sin ventas completadas</span>
+                  }
+                </div>
+
+                {/* Paginación */}
+                {totalPaginas > 1 && (
+                  <Pagination size="sm" className="mb-0">
+                    <Pagination.First
+                      disabled={paginaActual === 1}
+                      onClick={() => handleCambiarPagina(1)}
+                    />
+                    <Pagination.Prev
+                      disabled={paginaActual === 1}
+                      onClick={() => handleCambiarPagina(paginaActual - 1)}
+                    />
+                    {/* Páginas visibles: máximo 5 */}
+                    {Array.from({ length: Math.min(5, totalPaginas) }, (_, i) => {
+                      let start = Math.max(1, paginaActual - 2);
+                      const end = Math.min(start + 4, totalPaginas);
+                      start = Math.max(1, end - 4);
+                      const page = start + i;
+                      if (page > totalPaginas) return null;
+                      return (
+                        <Pagination.Item
+                          key={page}
+                          active={page === paginaActual}
+                          onClick={() => handleCambiarPagina(page)}
+                        >
+                          {page}
+                        </Pagination.Item>
+                      );
+                    })}
+                    <Pagination.Next
+                      disabled={paginaActual === totalPaginas}
+                      onClick={() => handleCambiarPagina(paginaActual + 1)}
+                    />
+                    <Pagination.Last
+                      disabled={paginaActual === totalPaginas}
+                      onClick={() => handleCambiarPagina(totalPaginas)}
+                    />
+                  </Pagination>
+                )}
+              </div>
+            </>
           )}
         </Card.Body>
       </Card>
 
-      {/* Flujo de Caja */}
+      {/* Flujo de Caja (Movimientos) */}
       <Card className="border-0 shadow-sm">
         <Card.Header className="bg-white">
           <h5 className="mb-0">Movimientos de Caja</h5>
@@ -443,7 +509,6 @@ const FlujoCajaScreen = () => {
                     const tipo = item.tipo_transaccion;
                     const moneda = item.codigo_moneda;
                     const fecha = item.fecha_transaccion;
-
                     return (
                       <tr key={item.id_transaccion || index}>
                         <td>{formatDateTime(fecha)}</td>
@@ -494,6 +559,7 @@ const FlujoCajaScreen = () => {
         show={showCerrarModal}
         onHide={() => setShowCerrarModal(false)}
         estadoCaja={estadoCaja}
+        resumenVentas={resumenVentas}
         onSuccess={loadData}
       />
       <TransaccionModal
@@ -501,8 +567,6 @@ const FlujoCajaScreen = () => {
         onHide={() => setShowTransaccionModal(false)}
         onSuccess={loadData}
       />
-
-      {/* ✅ NUEVO - Modal de detalle de venta */}
       <DetalleVentaModal
         show={showDetalleModal}
         onHide={() => {
@@ -518,6 +582,6 @@ const FlujoCajaScreen = () => {
       />
     </div>
   );
-}
+};
 
 export default FlujoCajaScreen;

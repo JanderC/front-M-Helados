@@ -71,15 +71,14 @@ const TipoReporteConfig = {
     icon:  'bi-bag-check-fill',
     color: '#7B2FBE',
     chartType: 'pie',
-    headers: ['#', 'Producto', 'Categoría', 'Cantidad', 'Ingresos (USD)'],
+    headers: ['#', 'Producto', 'Categoría', 'Cantidad'],
     getLabel:  (item) => item.nombre_producto || item.nombre || '—',
     getCount:  (item) => int(item.cantidad_total || item.total_vendidos || item.cantidad),
     renderRow: (item, idx) => [
       idx + 1,
       <strong>{item.nombre_producto || item.nombre || '—'}</strong>,
       <span className="rep-badge cat">{item.nombre_categoria || item.categoria || '—'}</span>,
-      <span className="rep-count">{int(item.cantidad_total || item.total_vendidos || item.cantidad)}</span>,
-      <strong style={{ color: '#15803d' }}>{formatCurrency(num(item.ingresos_totales || item.total_ventas), 'USD')}</strong>
+      <span className="rep-count">{int(item.cantidad_total || item.total_vendidos || item.cantidad)}</span>
     ]
   },
   'toppings-usados': {
