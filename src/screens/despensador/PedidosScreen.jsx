@@ -5,7 +5,7 @@ import { ventasService } from '../../api/services/ventasService';
 import { useSocket } from '../../context/SocketContext';
 import { useAuth } from '../../hooks/useAuth';
 import { formatCurrency, formatDateTime, formatTimeAgo } from '../../utils/formatters';
-import { toast } from 'react-toastify';
+
 
 /* ─────────────────────────────────────────────────────
    Componente: Campana flotante con dropdown
@@ -316,7 +316,6 @@ const PedidosScreen = () => {
       setPedidos(enriquecidos);
     } catch (error) {
       console.error('Error al cargar pedidos:', error);
-      toast.error('Error al cargar pedidos');
     } finally { setLoading(false); }
   }, [enrichPedido]);
 
@@ -365,7 +364,6 @@ const PedidosScreen = () => {
     try {
       setProcesando(true);
       await ventasService.cambiarEstado(pedidoId, nuevoEstado);
-      toast.success(nuevoEstado === 'COMPLETADA' ? '✅ Pedido completado' : '🔄 Estado actualizado');
       if (socket) socket.emit('cambiar_estado_pedido', { id_venta: pedidoId, estado_venta: nuevoEstado });
       setNotifs(prev => prev.filter(n => n.id_venta !== pedidoId));
       setPedidos(prev => {
@@ -376,7 +374,6 @@ const PedidosScreen = () => {
       setShowModal(false);
       setSelectedPedido(null);
     } catch {
-      toast.error('Error al cambiar estado del pedido');
     } finally { setProcesando(false); }
   };
 

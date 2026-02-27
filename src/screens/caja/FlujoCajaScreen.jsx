@@ -11,15 +11,27 @@ import DetalleVentaModal from '../../components/ventas/DetalleVentaModal';
 
 const VENTAS_POR_PAGINA = 15;
 
+// ─── Helper: convierte cualquier valor a número seguro ───────────────────────
+const num = (v) => parseFloat(v) || 0;
+
+// ─── Helper: construye el rango de fechas consistente ────────────────────────
+// Siempre agrega T23:59:59 al fecha_fin para capturar el día completo
+const buildFiltroParams = (filtros) => {
+  const params = {};
+  if (filtros.fechaInicio) params.fecha_inicio = filtros.fechaInicio;
+  if (filtros.fechaFin)    params.fecha_fin    = filtros.fechaFin + 'T23:59:59';
+  return params;
+};
+
 const FlujoCajaScreen = () => {
-  const [estadoCaja, setEstadoCaja] = useState(null);
-  const [flujo, setFlujo] = useState([]);
-  const [resumenVentas, setResumenVentas] = useState(null);
-  const [ventasDelDia, setVentasDelDia] = useState([]);
+  const [estadoCaja, setEstadoCaja]         = useState(null);
+  const [flujo, setFlujo]                   = useState([]);
+  const [resumenVentas, setResumenVentas]   = useState(null);
+  const [ventasDelDia, setVentasDelDia]     = useState([]);
   const [totalVentasCount, setTotalVentasCount] = useState(0);
-  const [paginaActual, setPaginaActual] = useState(1);
-  const [loadingVentas, setLoadingVentas] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [paginaActual, setPaginaActual]     = useState(1);
+  const [loadingVentas, setLoadingVentas]   = useState(false);
+  const [loading, setLoading]               = useState(true);
   const [showAbrirModal, setShowAbrirModal] = useState(false);
   const [showCerrarModal, setShowCerrarModal] = useState(false);
   const [showTransaccionModal, setShowTransaccionModal] = useState(false);
@@ -27,21 +39,26 @@ const FlujoCajaScreen = () => {
   const [ventaDetalleId, setVentaDetalleId] = useState(null);
   const [filtros, setFiltros] = useState({
     fechaInicio: new Date().toISOString().split('T')[0],
-    fechaFin: new Date().toISOString().split('T')[0]
+    fechaFin:    new Date().toISOString().split('T')[0],
   });
 
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadData = async () => {
     try {
       setLoading(true);
       setPaginaActual(1);
+
+      // FIX: usar el mismo helper de fechas en todas las llamadas al backend
+      const filtroParams = buildFiltroParams(filtros);
+
       const [estadoRes, flujoRes, resumenRes] = await Promise.allSettled([
         cajaService.getEstado(),
-        cajaService.getFlujo(filtros),
-        cajaService.getResumenVentas(filtros),
+        cajaService.getFlujo(filtroParams),
+        cajaService.getResumenVentas(filtroParams),
       ]);
 
       if (estadoRes.status === 'fulfilled') {
@@ -74,26 +91,28 @@ const FlujoCajaScreen = () => {
   const loadVentasPagina = async (pagina) => {
     try {
       setLoadingVentas(true);
+
+      // FIX: usar el mismo helper de fechas — igual que en loadData
       const params = {
-        limit: VENTAS_POR_PAGINA,
+        ...buildFiltroParams(filtros),
+        limit:  VENTAS_POR_PAGINA,
         offset: (pagina - 1) * VENTAS_POR_PAGINA,
       };
-      if (filtros.fechaInicio) params.fecha_inicio = filtros.fechaInicio;
-      if (filtros.fechaFin) params.fecha_fin = filtros.fechaFin + 'T23:59:59';
 
       const response = await ventasService.getAll(params);
-      const rawData = response.data?.data || response.data || {};
+      const rawData  = response.data?.data || response.data || {};
 
-      // Soporta respuesta paginada {items, total} o array simple
       if (Array.isArray(rawData)) {
         setVentasDelDia(rawData);
-        // Si la API no devuelve total, usar el largo (solo página actual)
-        setTotalVentasCount(rawData.length < VENTAS_POR_PAGINA
-          ? (pagina - 1) * VENTAS_POR_PAGINA + rawData.length
-          : (pagina) * VENTAS_POR_PAGINA + 1); // indica que hay más
+        // Si la API no devuelve total, estimar a partir de la página
+        setTotalVentasCount(
+          rawData.length < VENTAS_POR_PAGINA
+            ? (pagina - 1) * VENTAS_POR_PAGINA + rawData.length
+            : pagina * VENTAS_POR_PAGINA + 1   // indica que hay más
+        );
       } else {
         const items = rawData.items || rawData.ventas || rawData.results || [];
-        const total = rawData.total || rawData.count || items.length;
+        const total = rawData.total  || rawData.count  || items.length;
         setVentasDelDia(Array.isArray(items) ? items : []);
         setTotalVentasCount(total);
       }
@@ -118,13 +137,14 @@ const FlujoCajaScreen = () => {
     loadData();
   };
 
+  // Balance del flujo de movimientos (ingresos - egresos)
   const calcularTotales = () => {
     const totales = {};
     if (Array.isArray(flujo)) {
       flujo.forEach(item => {
-        const tipo = item.tipo_transaccion;
+        const tipo   = item.tipo_transaccion;
         const moneda = item.codigo_moneda;
-        const monto = parseFloat(item.monto) || 0;
+        const monto  = num(item.monto);
         if (!totales[moneda]) totales[moneda] = 0;
         if (tipo === 'INGRESO') totales[moneda] += monto;
         else if (tipo === 'EGRESO') totales[moneda] -= monto;
@@ -133,24 +153,24 @@ const FlujoCajaScreen = () => {
     return totales;
   };
 
-  // Totales reales desde resumenVentas del backend (no desde la página actual)
+  // FIX: usar num() para evitar NaN con valores null/undefined del backend
+  // Muestra todas las monedas con dato válido (>= 0 se muestra si hay ventas)
   const calcularTotalesVentas = () => {
     if (!resumenVentas) return {};
     const totales = {};
-    if (parseFloat(resumenVentas.total_usd_original) > 0)
-      totales['USD'] = parseFloat(resumenVentas.total_usd_original);
-    if (parseFloat(resumenVentas.total_ves) > 0)
-      totales['VES'] = parseFloat(resumenVentas.total_ves);
-    if (parseFloat(resumenVentas.total_cop) > 0)
-      totales['COP'] = parseFloat(resumenVentas.total_cop);
+    const usd = num(resumenVentas.total_usd_original);
+    const ves = num(resumenVentas.total_ves);
+    const cop = num(resumenVentas.total_cop);
+    if (usd > 0) totales['USD'] = usd;
+    if (ves > 0) totales['VES'] = ves;
+    if (cop > 0) totales['COP'] = cop;
     return totales;
   };
 
-  const totales = calcularTotales();
+  const totales       = calcularTotales();
   const totalesVentas = calcularTotalesVentas();
-  const cajaAbierta = estadoCaja?.estado === 'ABIERTA' || estadoCaja?.abierta === true;
-
-  const totalPaginas = Math.ceil(totalVentasCount / VENTAS_POR_PAGINA);
+  const cajaAbierta   = estadoCaja?.estado === 'ABIERTA' || estadoCaja?.abierta === true;
+  const totalPaginas  = Math.ceil(totalVentasCount / VENTAS_POR_PAGINA);
 
   return (
     <div>
@@ -201,31 +221,34 @@ const FlujoCajaScreen = () => {
                     <Col md={3}>
                       <small className="text-muted d-block">Monto Inicial</small>
                       <strong className="text-primary">
-                        {parseFloat(estadoCaja.monto_inicial_cop || 0) > 0 && (
+                        {num(estadoCaja.monto_inicial_cop) > 0 && (
                           <div>{formatCurrency(estadoCaja.monto_inicial_cop, 'COP')}</div>
                         )}
-                        {parseFloat(estadoCaja.monto_inicial_usd || 0) > 0 && (
+                        {num(estadoCaja.monto_inicial_usd) > 0 && (
                           <div>{formatCurrency(estadoCaja.monto_inicial_usd, 'USD')}</div>
                         )}
-                        {parseFloat(estadoCaja.monto_inicial_ves || 0) > 0 && (
+                        {num(estadoCaja.monto_inicial_ves) > 0 && (
                           <div>{formatCurrency(estadoCaja.monto_inicial_ves, 'VES')}</div>
                         )}
                       </strong>
                     </Col>
                     <Col md={3}>
+                      {/* FIX: mostrar ventas_dia desde estadoCaja (desde apertura),
+                          que es distinto de resumenVentas (filtro de fecha).
+                          Aclarar la diferencia con etiquetas claras. */}
                       {estadoCaja.ventas_dia && (
                         <div>
                           <small className="text-muted d-block">Ventas desde apertura</small>
                           <strong className="text-success">
-                            {parseInt(estadoCaja.ventas_dia.total_ventas)} ventas
+                            {parseInt(estadoCaja.ventas_dia.total_ventas) || 0} ventas
                           </strong>
-                          {parseFloat(estadoCaja.ventas_dia.total_cop) > 0 && (
+                          {num(estadoCaja.ventas_dia.total_cop) > 0 && (
                             <div className="small">{formatCurrency(estadoCaja.ventas_dia.total_cop, 'COP')}</div>
                           )}
-                          {parseFloat(estadoCaja.ventas_dia.total_usd_original) > 0 && (
+                          {num(estadoCaja.ventas_dia.total_usd_original) > 0 && (
                             <div className="small">{formatCurrency(estadoCaja.ventas_dia.total_usd_original, 'USD')}</div>
                           )}
-                          {parseFloat(estadoCaja.ventas_dia.total_ves) > 0 && (
+                          {num(estadoCaja.ventas_dia.total_ves) > 0 && (
                             <div className="small">{formatCurrency(estadoCaja.ventas_dia.total_ves, 'VES')}</div>
                           )}
                         </div>
@@ -256,7 +279,7 @@ const FlujoCajaScreen = () => {
                 <div>
                   <p className="text-muted mb-1">Ventas en USD</p>
                   <h3 className="fw-bold mb-0 text-success">
-                    {formatCurrency(resumenVentas?.total_usd_original || 0, 'USD')}
+                    {formatCurrency(num(resumenVentas?.total_usd_original), 'USD')}
                   </h3>
                 </div>
                 <div className="bg-success bg-opacity-10 p-3 rounded">
@@ -273,7 +296,7 @@ const FlujoCajaScreen = () => {
                 <div>
                   <p className="text-muted mb-1">Ventas en Bolívares</p>
                   <h3 className="fw-bold mb-0 text-info">
-                    {formatCurrency(resumenVentas?.total_ves || 0, 'VES')}
+                    {formatCurrency(num(resumenVentas?.total_ves), 'VES')}
                   </h3>
                 </div>
                 <div className="bg-info bg-opacity-10 p-3 rounded">
@@ -290,7 +313,7 @@ const FlujoCajaScreen = () => {
                 <div>
                   <p className="text-muted mb-1">Ventas en Pesos</p>
                   <h3 className="fw-bold mb-0 text-warning">
-                    {formatCurrency(resumenVentas?.total_cop || 0, 'COP')}
+                    {formatCurrency(num(resumenVentas?.total_cop), 'COP')}
                   </h3>
                 </div>
                 <div className="bg-warning bg-opacity-10 p-3 rounded">
@@ -383,9 +406,9 @@ const FlujoCajaScreen = () => {
                     {ventasDelDia.map((venta) => {
                       const colorEstado = {
                         COMPLETADA: 'success',
-                        PENDIENTE: 'warning',
+                        PENDIENTE:  'warning',
                         EN_PROCESO: 'info',
-                        CANCELADA: 'danger',
+                        CANCELADA:  'danger',
                       };
                       return (
                         <tr key={venta.id_venta}>
@@ -422,7 +445,7 @@ const FlujoCajaScreen = () => {
 
               {/* Footer con totales REALES del backend + paginación */}
               <div className="px-3 py-2 border-top bg-light d-flex justify-content-between align-items-center flex-wrap gap-2">
-                {/* Totales reales */}
+                {/* Totales reales del resumen backend */}
                 <div className="d-flex gap-3 align-items-center flex-wrap">
                   <span className="fw-bold text-muted small">Total completadas:</span>
                   {Object.entries(totalesVentas).length > 0
@@ -447,7 +470,6 @@ const FlujoCajaScreen = () => {
                       disabled={paginaActual === 1}
                       onClick={() => handleCambiarPagina(paginaActual - 1)}
                     />
-                    {/* Páginas visibles: máximo 5 */}
                     {Array.from({ length: Math.min(5, totalPaginas) }, (_, i) => {
                       let start = Math.max(1, paginaActual - 2);
                       const end = Math.min(start + 4, totalPaginas);
@@ -506,9 +528,9 @@ const FlujoCajaScreen = () => {
                   </tr>
                 ) : (
                   flujo.map((item, index) => {
-                    const tipo = item.tipo_transaccion;
+                    const tipo   = item.tipo_transaccion;
                     const moneda = item.codigo_moneda;
-                    const fecha = item.fecha_transaccion;
+                    const fecha  = item.fecha_transaccion;
                     return (
                       <tr key={item.id_transaccion || index}>
                         <td>{formatDateTime(fecha)}</td>
@@ -555,11 +577,13 @@ const FlujoCajaScreen = () => {
         onHide={() => setShowAbrirModal(false)}
         onSuccess={loadData}
       />
+      {/* FIX: pasar ventasDelDia al modal de cierre para que muestre la lista de ventas */}
       <CerrarCajaModal
         show={showCerrarModal}
         onHide={() => setShowCerrarModal(false)}
         estadoCaja={estadoCaja}
         resumenVentas={resumenVentas}
+        ventasDelDia={ventasDelDia}
         onSuccess={loadData}
       />
       <TransaccionModal

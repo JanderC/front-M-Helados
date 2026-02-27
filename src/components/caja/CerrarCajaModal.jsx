@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Modal, Spinner } from 'react-bootstrap';
+import { Modal, Spinner, Table, Badge } from 'react-bootstrap';
 import { cajaService } from '../../api/services/cajaService';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { toast } from 'react-toastify';
@@ -19,11 +19,13 @@ const num = (v) => parseFloat(v) || 0;
  *      estadoCaja.usuario_apertura
  *  - resumenVentas: objeto con totales reales del período (pasado desde FlujoCajaScreen)
  *      { total_cop, total_usd_original, total_ves, total_usd, total_ventas }
+ *  - ventasDelDia: array de ventas para mostrar en la lista del modal
  *  - onSuccess: fn callback tras cerrar con éxito
  */
-const CerrarCajaModal = ({ show, onHide, estadoCaja, resumenVentas, onSuccess }) => {
-  const [cerrando, setCerrando] = useState(false);
+const CerrarCajaModal = ({ show, onHide, estadoCaja, resumenVentas, ventasDelDia = [], onSuccess }) => {
+  const [cerrando, setCerrando]         = useState(false);
   const [observaciones, setObservaciones] = useState('');
+  const [mostrarVentas, setMostrarVentas] = useState(false);
 
   // Montos finales reales que ingresa el cajero
   const [finalCOP, setFinalCOP] = useState('');
@@ -37,16 +39,18 @@ const CerrarCajaModal = ({ show, onHide, estadoCaja, resumenVentas, onSuccess })
       setFinalUSD('');
       setFinalVES('');
       setObservaciones('');
+      setMostrarVentas(false);
     }
   }, [show]);
 
-  /* ── Preferir resumenVentas (más completo) sobre ventas_dia ── */
+  /* ── FIX: Preferir resumenVentas (más completo) sobre ventas_dia.
+     num() garantiza que null/undefined → 0, nunca NaN. ── */
   const ventasFuente = resumenVentas || estadoCaja?.ventas_dia || {};
-  const ventasCOP = num(ventasFuente.total_cop);
-  const ventasUSD = num(ventasFuente.total_usd_original);
-  const ventasVES = num(ventasFuente.total_ves);
-  const totalVentas = parseInt(ventasFuente.total_ventas) || 0;
-  const totalUSDRef = num(ventasFuente.total_usd);
+  const ventasCOP    = num(ventasFuente.total_cop);
+  const ventasUSD    = num(ventasFuente.total_usd_original);
+  const ventasVES    = num(ventasFuente.total_ves);
+  const totalVentas  = parseInt(ventasFuente.total_ventas) || 0;
+  const totalUSDRef  = num(ventasFuente.total_usd);
 
   /* ── Montos iniciales de la caja ── */
   const inicialCOP = num(estadoCaja?.monto_inicial_cop);
@@ -65,9 +69,9 @@ const CerrarCajaModal = ({ show, onHide, estadoCaja, resumenVentas, onSuccess })
 
   /* ── Monedas activas (tienen inicial o ventas) ── */
   const monedasActivas = [
-    { cod: 'COP', label: 'Pesos Colombianos',   icon: 'bi-cash',           color: '#92400e', bg: 'rgba(245,158,11,0.08)',  border: 'rgba(245,158,11,0.3)',  inicial: inicialCOP, ventas: ventasCOP, esperado: esperadoCOP, val: finalCOP, setVal: setFinalCOP, dif: difCOP },
-    { cod: 'USD', label: 'Dólares',              icon: 'bi-currency-dollar', color: '#15803d', bg: 'rgba(34,197,94,0.07)',  border: 'rgba(34,197,94,0.3)',   inicial: inicialUSD, ventas: ventasUSD, esperado: esperadoUSD, val: finalUSD, setVal: setFinalUSD, dif: difUSD },
-    { cod: 'VES', label: 'Bolívares',            icon: 'bi-cash-coin',      color: '#1d4ed8', bg: 'rgba(59,130,246,0.07)', border: 'rgba(59,130,246,0.3)',  inicial: inicialVES, ventas: ventasVES, esperado: esperadoVES, val: finalVES, setVal: setFinalVES, dif: difVES },
+    { cod: 'COP', label: 'Pesos Colombianos',    icon: 'bi-cash',            color: '#92400e', bg: 'rgba(245,158,11,0.08)',  border: 'rgba(245,158,11,0.3)',  inicial: inicialCOP, ventas: ventasCOP, esperado: esperadoCOP, val: finalCOP, setVal: setFinalCOP, dif: difCOP },
+    { cod: 'USD', label: 'Dólares',               icon: 'bi-currency-dollar', color: '#15803d', bg: 'rgba(34,197,94,0.07)',  border: 'rgba(34,197,94,0.3)',   inicial: inicialUSD, ventas: ventasUSD, esperado: esperadoUSD, val: finalUSD, setVal: setFinalUSD, dif: difUSD },
+    { cod: 'VES', label: 'Bolívares',             icon: 'bi-cash-coin',       color: '#1d4ed8', bg: 'rgba(59,130,246,0.07)', border: 'rgba(59,130,246,0.3)',  inicial: inicialVES, ventas: ventasVES, esperado: esperadoVES, val: finalVES, setVal: setFinalVES, dif: difVES },
   ].filter(m => m.inicial > 0 || m.ventas > 0);
 
   const monedasMostrar = monedasActivas.length > 0 ? monedasActivas : [
@@ -113,6 +117,14 @@ const CerrarCajaModal = ({ show, onHide, estadoCaja, resumenVentas, onSuccess })
     } finally {
       setCerrando(false);
     }
+  };
+
+  // FIX: colores de estado de venta reutilizados en el modal
+  const colorEstado = {
+    COMPLETADA: 'success',
+    PENDIENTE:  'warning',
+    EN_PROCESO: 'info',
+    CANCELADA:  'danger',
   };
 
   return (
@@ -231,9 +243,9 @@ const CerrarCajaModal = ({ show, onHide, estadoCaja, resumenVentas, onSuccess })
           display: flex; align-items: center; gap: 8px;
           border-bottom: 1px solid rgba(123,47,190,0.08);
         }
-        .tag-COP { background: rgba(245,158,11,0.1); color: #92400e; }
-        .tag-USD { background: rgba(34,197,94,0.1);  color: #15803d; }
-        .tag-VES { background: rgba(59,130,246,0.1); color: #1d4ed8; }
+        .tag-COP { background: rgba(245,158,11,0.12); color: #92400e; }
+        .tag-USD { background: rgba(34,197,94,0.12);  color: #15803d; }
+        .tag-VES { background: rgba(59,130,246,0.12); color: #1d4ed8; }
 
         .cm-resumen-cells {
           display: flex;
@@ -356,10 +368,20 @@ const CerrarCajaModal = ({ show, onHide, estadoCaja, resumenVentas, onSuccess })
         .cm-btn-cerrar:hover:not(:disabled) { filter: brightness(1.06); transform: translateY(-1px); }
         .cm-btn-cerrar:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
 
-        /* ── Moneda tag colors ── */
-        .tag-COP { background: rgba(245,158,11,0.12); color: #92400e; }
-        .tag-USD { background: rgba(34,197,94,0.12);  color: #15803d; }
-        .tag-VES { background: rgba(59,130,246,0.12); color: #1d4ed8; }
+        /* ── Ventas toggle ── */
+        .cm-ventas-toggle {
+          background: none; border: 1.5px solid rgba(123,47,190,0.2);
+          border-radius: 9px; padding: 7px 14px; font-size: 0.82rem; font-weight: 700;
+          color: #7B2FBE; cursor: pointer; display: flex; align-items: center; gap: 6px;
+          transition: background 0.15s;
+        }
+        .cm-ventas-toggle:hover { background: rgba(123,47,190,0.05); }
+        .cm-ventas-table-wrap {
+          border-radius: 11px; border: 1px solid rgba(123,47,190,0.1);
+          overflow: hidden; margin-top: 10px;
+        }
+        .cm-ventas-table-wrap .table { margin-bottom: 0; font-size: 0.82rem; }
+        .cm-ventas-table-wrap .table thead th { background: #f8f7ff; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: #9580b0; }
       `}</style>
 
       <Modal show={show} onHide={onHide} centered className="cerrar-modal" backdrop="static" size="xl">
@@ -477,6 +499,68 @@ const CerrarCajaModal = ({ show, onHide, estadoCaja, resumenVentas, onSuccess })
                 </div>
               </div>
             </div>
+
+            {/* ── FIX: Listado de ventas del turno (colapsable) ── */}
+            {ventasDelDia.length > 0 && (
+              <>
+                <div className="cm-section-title">
+                  Detalle de ventas del turno
+                  <button
+                    className="cm-ventas-toggle"
+                    onClick={() => setMostrarVentas(v => !v)}
+                  >
+                    <i className={`bi ${mostrarVentas ? 'bi-chevron-up' : 'bi-chevron-down'}`}/>
+                    {mostrarVentas ? 'Ocultar' : `Ver ${ventasDelDia.length} ventas`}
+                  </button>
+                </div>
+                {mostrarVentas && (
+                  <div className="cm-ventas-table-wrap">
+                    <Table hover className="table">
+                      <thead>
+                        <tr>
+                          <th>Factura</th>
+                          <th>Hora</th>
+                          <th>Cliente</th>
+                          <th>Moneda</th>
+                          <th className="text-end">Total</th>
+                          <th>Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ventasDelDia.map(venta => (
+                          <tr key={venta.id_venta}>
+                            <td className="fw-bold text-primary">{venta.numero_factura}</td>
+                            <td className="text-muted">{formatDateTime(venta.fecha_venta)}</td>
+                            <td>{venta.nombre_cliente || <span className="text-muted">—</span>}</td>
+                            <td><Badge bg="secondary">{venta.codigo_moneda}</Badge></td>
+                            <td className="text-end fw-bold">{formatCurrency(venta.total, venta.codigo_moneda)}</td>
+                            <td>
+                              <Badge bg={colorEstado[venta.estado_venta] || 'secondary'}>
+                                {venta.estado_venta}
+                              </Badge>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      {/* Subtotales por moneda al pie de la tabla */}
+                      <tfoot className="table-light">
+                        <tr>
+                          <td colSpan="4" className="text-end fw-bold text-muted small">Totales del período:</td>
+                          <td className="text-end" colSpan="2">
+                            {monedasMostrar.map(m => m.ventas > 0 ? (
+                              <div key={m.cod} className="fw-bold text-success small">
+                                +{formatCurrency(m.ventas, m.cod)}{' '}
+                                <Badge bg="secondary" className="small">{m.cod}</Badge>
+                              </div>
+                            ) : null)}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </Table>
+                  </div>
+                )}
+              </>
+            )}
 
             {/* ── Conteo físico (grid responsivo) ── */}
             <div className="cm-section-title">Conteo físico de caja</div>
