@@ -350,7 +350,7 @@ const NuevaVentaScreen = () => {
 
         .nv-layout {
           display: grid;
-          grid-template-columns: 1fr 460px;
+          grid-template-columns: 1fr 520px;
           gap: 16px;
           align-items: start;
         }
@@ -401,7 +401,7 @@ const NuevaVentaScreen = () => {
 
         .productos-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+          grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
           gap: 12px;
         }
 
@@ -428,13 +428,13 @@ const NuevaVentaScreen = () => {
         .producto-card:active { transform: scale(0.97); }
         .producto-img {
           width: 100%;
-          aspect-ratio: 3/2;
+          aspect-ratio: 4/3;
           object-fit: cover;
           background: linear-gradient(135deg, #f5f0fb, #ede4f8);
         }
         .producto-img-placeholder {
           width: 100%;
-          aspect-ratio: 3/2;
+          aspect-ratio: 4/3;
           background: linear-gradient(135deg, #f5f0fb, #ede4f8);
           display: flex;
           align-items: center;
@@ -442,7 +442,7 @@ const NuevaVentaScreen = () => {
           font-size: clamp(1.6rem, 4vw, 2.2rem);
         }
         .producto-body {
-          padding: 10px 12px 12px;
+          padding: 12px 14px 16px;
           flex: 1;
           display: flex;
           flex-direction: column;
@@ -453,7 +453,7 @@ const NuevaVentaScreen = () => {
         .producto-nombre {
           font-family: 'DM Sans', sans-serif;
           font-weight: 700;
-          font-size: 0.85rem;
+          font-size: 1rem;
           color: #1a0a2e;
           line-height: 1.3;
           display: -webkit-box;
@@ -1040,7 +1040,7 @@ const NuevaVentaScreen = () => {
           .carrito-panel { display: none; }
           .carrito-fab { display: flex !important; }
           .carrito-overlay { display: block; }
-          .productos-grid { grid-template-columns: repeat(auto-fill, minmax(145px, 1fr)); gap: 12px; }
+          .productos-grid { grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)) gap: 12px; }
           .extras-sheet { max-width: 100%; }
         }
         @media (max-width: 576px) {

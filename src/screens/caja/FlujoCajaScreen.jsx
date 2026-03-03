@@ -16,6 +16,15 @@ const num = (v) => parseFloat(v) || 0;
 
 // ─── Helper: construye el rango de fechas consistente ────────────────────────
 // Siempre agrega T23:59:59 al fecha_fin para capturar el día completo
+
+const getFechaLocal = () => {
+  const hoy = new Date();
+  const año = hoy.getFullYear();
+  const mes = String(hoy.getMonth() + 1).padStart(2, '0');
+  const dia = String(hoy.getDate()).padStart(2, '0');
+  return `${año}-${mes}-${dia}`;
+};
+
 const buildFiltroParams = (filtros) => {
   const params = {};
   if (filtros.fechaInicio) params.fecha_inicio = filtros.fechaInicio;
@@ -88,13 +97,6 @@ const FlujoCajaScreen = () => {
     }
   };
 
-  const getFechaLocal = () => {
-  const hoy = new Date();
-  const año = hoy.getFullYear();
-  const mes = String(hoy.getMonth() + 1).padStart(2, '0');
-  const dia = String(hoy.getDate()).padStart(2, '0');
-  return `${año}-${mes}-${dia}`;
-};
 
   const loadVentasPagina = async (pagina) => {
     try {
@@ -160,6 +162,7 @@ const FlujoCajaScreen = () => {
     }
     return totales;
   };
+
 
   // FIX: usar num() para evitar NaN con valores null/undefined del backend
   // Muestra todas las monedas con dato válido (>= 0 se muestra si hay ventas)
