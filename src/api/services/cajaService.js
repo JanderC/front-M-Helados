@@ -77,5 +77,9 @@ export const cajaService = {
   // Historial de arqueos
   getHistorial: (params = {}) => {
     return api.get('/caja/historial', { params });
-  }
+  },
+
+  getVentasPorArqueo: (idArqueo) =>
+  api.get(`/caja/historial/${idArqueo}/ventas`),
+
 };

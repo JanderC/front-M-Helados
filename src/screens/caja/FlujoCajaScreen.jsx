@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Row, Col, Card, Button, Form, Table, Badge, Alert, Spinner, Pagination } from 'react-bootstrap';
+import {
+  Row, Col, Card, Button, Form, Table, Badge, Alert,
+  Spinner, Pagination, Modal, ListGroup
+} from 'react-bootstrap';
 import { cajaService } from '../../api/services/cajaService';
 import { ventasService } from '../../api/services/ventasService';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
@@ -15,8 +18,6 @@ const VENTAS_POR_PAGINA = 15;
 const num = (v) => parseFloat(v) || 0;
 
 // ─── Helper: construye el rango de fechas consistente ────────────────────────
-// Siempre agrega T23:59:59 al fecha_fin para capturar el día completo
-
 const getFechaLocal = () => {
   const hoy = new Date();
   const año = hoy.getFullYear();
@@ -32,27 +33,263 @@ const buildFiltroParams = (filtros) => {
   return params;
 };
 
-const FlujoCajaScreen = () => {
-  const [estadoCaja, setEstadoCaja]         = useState(null);
-  const [flujo, setFlujo]                   = useState([]);
-  const [resumenVentas, setResumenVentas]   = useState(null);
-  const [ventasDelDia, setVentasDelDia]     = useState([]);
-  const [totalVentasCount, setTotalVentasCount] = useState(0);
-  const [paginaActual, setPaginaActual]     = useState(1);
+// ─── Helper: formatear fecha corta (solo fecha, sin hora) ────────────────────
+const formatFecha = (fechaStr) => {
+  if (!fechaStr) return '—';
+  const d = new Date(fechaStr);
+  return d.toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+};
+
+// ─── Helper: formatear hora ───────────────────────────────────────────────────
+const formatHora = (fechaStr) => {
+  if (!fechaStr) return '—';
+  const d = new Date(fechaStr);
+  return d.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' });
+};
+
+// ─── Componente: Modal de detalle del cierre (ventas del arqueo) ─────────────
+const DetalleCierreModal = ({ show, onHide, arqueo, onVerVenta }) => {
   const [loadingVentas, setLoadingVentas]   = useState(false);
-  const [loading, setLoading]               = useState(true);
-  const [showAbrirModal, setShowAbrirModal] = useState(false);
-  const [showCerrarModal, setShowCerrarModal] = useState(false);
-  const [showTransaccionModal, setShowTransaccionModal] = useState(false);
-  const [showDetalleModal, setShowDetalleModal] = useState(false);
-  const [ventaDetalleId, setVentaDetalleId] = useState(null);
+  const [ventasArqueo, setVentasArqueo]     = useState([]);
+  const [resumenMoneda, setResumenMoneda]   = useState({});
+  const [totalVentas, setTotalVentas]       = useState(0);
+  const [error, setError]                   = useState(null);
+
+  useEffect(() => {
+    if (show && arqueo?.id_arqueo) {
+      cargarVentas(arqueo.id_arqueo);
+    } else {
+      setVentasArqueo([]);
+      setResumenMoneda({});
+      setTotalVentas(0);
+      setError(null);
+    }
+  }, [show, arqueo]);
+
+  const cargarVentas = async (idArqueo) => {
+    try {
+      setLoadingVentas(true);
+      setError(null);
+      // Llama al nuevo endpoint: GET /api/caja/historial/:id_arqueo/ventas
+      const response = await cajaService.getVentasPorArqueo(idArqueo);
+      const data = response.data?.data || {};
+      setVentasArqueo(data.ventas || []);
+      setResumenMoneda(data.resumen_por_moneda || {});
+      setTotalVentas(data.total_ventas || 0);
+    } catch (err) {
+      console.error('Error al cargar ventas del arqueo:', err);
+      setError('No se pudieron cargar las ventas de este cierre.');
+    } finally {
+      setLoadingVentas(false);
+    }
+  };
+
+  const colorEstado = {
+    COMPLETADA: 'success',
+    PENDIENTE:  'warning',
+    EN_PROCESO: 'info',
+    CANCELADA:  'danger',
+  };
+
+  return (
+    <Modal show={show} onHide={onHide} size="xl" centered scrollable>
+      <Modal.Header closeButton className="border-bottom">
+        <Modal.Title>
+          <i className="bi bi-journal-text me-2 text-primary"></i>
+          Detalle del Cierre —{' '}
+          <span className="text-muted fs-6 fw-normal">
+            {arqueo ? formatFecha(arqueo.fecha_apertura) : ''}
+          </span>
+        </Modal.Title>
+      </Modal.Header>
+
+      <Modal.Body className="p-0">
+        {/* Resumen del arqueo */}
+        {arqueo && (
+          <div className="bg-light border-bottom px-4 py-3">
+            <Row className="g-3">
+              <Col md={3}>
+                <div className="small text-muted">Apertura</div>
+                <div className="fw-semibold">{formatDateTime(arqueo.fecha_apertura)}</div>
+                <div className="small text-muted">{arqueo.usuario_apertura}</div>
+              </Col>
+              <Col md={3}>
+                <div className="small text-muted">Cierre</div>
+                <div className="fw-semibold">
+                  {arqueo.fecha_cierre ? formatDateTime(arqueo.fecha_cierre) : (
+                    <Badge bg="success">Abierta</Badge>
+                  )}
+                </div>
+                {arqueo.usuario_cierre && (
+                  <div className="small text-muted">{arqueo.usuario_cierre}</div>
+                )}
+              </Col>
+              <Col md={3}>
+                <div className="small text-muted">Monto inicial</div>
+                <div className="fw-semibold">
+                  {num(arqueo.monto_inicial_cop) > 0 && (
+                    <div>{formatCurrency(arqueo.monto_inicial_cop, 'COP')}</div>
+                  )}
+                  {num(arqueo.monto_inicial_usd) > 0 && (
+                    <div>{formatCurrency(arqueo.monto_inicial_usd, 'USD')}</div>
+                  )}
+                  {num(arqueo.monto_inicial_ves) > 0 && (
+                    <div>{formatCurrency(arqueo.monto_inicial_ves, 'VES')}</div>
+                  )}
+                  {num(arqueo.monto_inicial_cop) === 0 &&
+                   num(arqueo.monto_inicial_usd) === 0 &&
+                   num(arqueo.monto_inicial_ves) === 0 && (
+                     <span className="text-muted">Sin monto inicial</span>
+                   )}
+                </div>
+              </Col>
+              <Col md={3}>
+                <div className="small text-muted">Total ventas del período</div>
+                <div className="fw-bold text-success">
+                  {totalVentas} ventas completadas
+                </div>
+                {Object.entries(resumenMoneda).map(([moneda, total]) => (
+                  <div key={moneda} className="small fw-semibold text-success">
+                    {formatCurrency(total, moneda)}{' '}
+                    <Badge bg="secondary" className="small">{moneda}</Badge>
+                  </div>
+                ))}
+              </Col>
+            </Row>
+          </div>
+        )}
+
+        {/* Tabla de ventas */}
+        <div className="p-3">
+          {loadingVentas ? (
+            <div className="text-center py-5">
+              <Spinner animation="border" variant="primary" />
+              <div className="mt-2 text-muted">Cargando ventas del cierre...</div>
+            </div>
+          ) : error ? (
+            <Alert variant="danger" className="m-3">
+              <i className="bi bi-exclamation-triangle me-2"></i>
+              {error}
+            </Alert>
+          ) : ventasArqueo.length === 0 ? (
+            <div className="text-center py-5 text-muted">
+              <i className="bi bi-inbox display-6 d-block mb-2"></i>
+              No hay ventas completadas en este período de caja
+            </div>
+          ) : (
+            <div style={{ maxHeight: '420px', overflowY: 'auto' }}>
+              <Table hover size="sm" className="mb-0" style={{ fontSize: '0.875rem' }}>
+                <thead className="table-light" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
+                  <tr>
+                    <th>Factura</th>
+                    <th>Fecha / Hora</th>
+                    <th>Cliente</th>
+                    <th>Productos</th>
+                    <th>Moneda</th>
+                    <th className="text-end">Total</th>
+                    <th>Estado</th>
+                    <th className="text-center">Ver</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ventasArqueo.map((venta) => (
+                    <tr key={venta.id_venta}>
+                      <td className="fw-bold text-primary">{venta.numero_factura}</td>
+                      <td className="small">
+                        <div>{formatFecha(venta.fecha_venta)}</div>
+                        <div className="text-muted">{formatHora(venta.fecha_venta)}</div>
+                      </td>
+                      <td>{venta.nombre_cliente || <span className="text-muted">—</span>}</td>
+                      <td className="small">
+                        {Array.isArray(venta.items) && venta.items.length > 0 ? (
+                          <div>
+                            {venta.items.slice(0, 2).map((item, idx) => (
+                              <div key={idx} className="text-truncate" style={{ maxWidth: 160 }}>
+                                {item.cantidad}× {item.nombre_producto}
+                              </div>
+                            ))}
+                            {venta.items.length > 2 && (
+                              <span className="text-muted">+{venta.items.length - 2} más</span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-muted">—</span>
+                        )}
+                      </td>
+                      <td>
+                        <Badge bg="secondary">{venta.codigo_moneda}</Badge>
+                      </td>
+                      <td className="text-end fw-bold text-success">
+                        {formatCurrency(venta.total, venta.codigo_moneda)}
+                      </td>
+                      <td>
+                        <Badge bg={colorEstado[venta.estado_venta] || 'secondary'}>
+                          {venta.estado_venta}
+                        </Badge>
+                      </td>
+                      <td className="text-center">
+                        <Button
+                          variant="outline-primary"
+                          size="sm"
+                          onClick={() => onVerVenta(venta.id_venta)}
+                        >
+                          <i className="bi bi-eye"></i>
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </div>
+          )}
+        </div>
+      </Modal.Body>
+
+      <Modal.Footer className="border-top bg-light">
+        <Button variant="secondary" onClick={onHide}>
+          Cerrar
+        </Button>
+      </Modal.Footer>
+    </Modal>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Componente principal
+// ─────────────────────────────────────────────────────────────────────────────
+const FlujoCajaScreen = () => {
+  const [estadoCaja, setEstadoCaja]             = useState(null);
+  const [flujo, setFlujo]                       = useState([]);
+  const [resumenVentas, setResumenVentas]       = useState(null);
+  const [ventasDelDia, setVentasDelDia]         = useState([]);
+  const [totalVentasCount, setTotalVentasCount] = useState(0);
+  const [paginaActual, setPaginaActual]         = useState(1);
+  const [loadingVentas, setLoadingVentas]       = useState(false);
+  const [loading, setLoading]                   = useState(true);
+
+  // Historial de arqueos
+  const [historial, setHistorial]               = useState([]);
+  const [loadingHistorial, setLoadingHistorial] = useState(false);
+
+  // Modales
+  const [showAbrirModal, setShowAbrirModal]               = useState(false);
+  const [showCerrarModal, setShowCerrarModal]             = useState(false);
+  const [showTransaccionModal, setShowTransaccionModal]   = useState(false);
+  const [showDetalleModal, setShowDetalleModal]           = useState(false);
+  const [ventaDetalleId, setVentaDetalleId]               = useState(null);
+
+  // Modal de detalle del cierre
+  const [showDetalleCierre, setShowDetalleCierre]         = useState(false);
+  const [arqueoSeleccionado, setArqueoSeleccionado]       = useState(null);
+
   const [filtros, setFiltros] = useState({
-  fechaInicio: getFechaLocal(),
-  fechaFin:    getFechaLocal(),
-});
+    fechaInicio: getFechaLocal(),
+    fechaFin:    getFechaLocal(),
+  });
 
   useEffect(() => {
     loadData();
+    loadHistorial();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -61,7 +298,6 @@ const FlujoCajaScreen = () => {
       setLoading(true);
       setPaginaActual(1);
 
-      // FIX: usar el mismo helper de fechas en todas las llamadas al backend
       const filtroParams = buildFiltroParams(filtros);
 
       const [estadoRes, flujoRes, resumenRes] = await Promise.allSettled([
@@ -97,12 +333,25 @@ const FlujoCajaScreen = () => {
     }
   };
 
+  // ─── Carga el historial de arqueos cerrados ────────────────────────────────
+  const loadHistorial = async () => {
+    try {
+      setLoadingHistorial(true);
+      const response = await cajaService.getHistorialArqueos({ limit: 30 });
+      const data = response.data?.data || [];
+      // Solo mostrar los CERRADOS en la cuadrícula de cierres
+      setHistorial(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error al cargar historial:', error);
+    } finally {
+      setLoadingHistorial(false);
+    }
+  };
 
   const loadVentasPagina = async (pagina) => {
     try {
       setLoadingVentas(true);
 
-      // FIX: usar el mismo helper de fechas — igual que en loadData
       const params = {
         ...buildFiltroParams(filtros),
         limit:  VENTAS_POR_PAGINA,
@@ -114,11 +363,10 @@ const FlujoCajaScreen = () => {
 
       if (Array.isArray(rawData)) {
         setVentasDelDia(rawData);
-        // Si la API no devuelve total, estimar a partir de la página
         setTotalVentasCount(
           rawData.length < VENTAS_POR_PAGINA
             ? (pagina - 1) * VENTAS_POR_PAGINA + rawData.length
-            : pagina * VENTAS_POR_PAGINA + 1   // indica que hay más
+            : pagina * VENTAS_POR_PAGINA + 1
         );
       } else {
         const items = rawData.items || rawData.ventas || rawData.results || [];
@@ -147,7 +395,13 @@ const FlujoCajaScreen = () => {
     loadData();
   };
 
-  // Balance del flujo de movimientos (ingresos - egresos)
+  // Abre el modal de detalle del cierre
+  const handleVerDetalleCierre = (arqueo) => {
+    setArqueoSeleccionado(arqueo);
+    setShowDetalleCierre(true);
+  };
+
+  // Cálculos de totales
   const calcularTotales = () => {
     const totales = {};
     if (Array.isArray(flujo)) {
@@ -163,9 +417,6 @@ const FlujoCajaScreen = () => {
     return totales;
   };
 
-
-  // FIX: usar num() para evitar NaN con valores null/undefined del backend
-  // Muestra todas las monedas con dato válido (>= 0 se muestra si hay ventas)
   const calcularTotalesVentas = () => {
     if (!resumenVentas) return {};
     const totales = {};
@@ -183,8 +434,12 @@ const FlujoCajaScreen = () => {
   const cajaAbierta   = estadoCaja?.estado === 'ABIERTA' || estadoCaja?.abierta === true;
   const totalPaginas  = Math.ceil(totalVentasCount / VENTAS_POR_PAGINA);
 
+  // Solo los arqueos CERRADOS para la cuadrícula
+  const arqueosCerrados = historial.filter(a => a.estado === 'CERRADA');
+
   return (
     <div>
+      {/* ── Encabezado ── */}
       <div className="d-flex justify-content-between align-items-center mb-4">
         <h2 className="fw-bold">
           <i className="bi bi-cash-stack me-2 text-primary"></i>
@@ -211,7 +466,7 @@ const FlujoCajaScreen = () => {
         </div>
       </div>
 
-      {/* Estado de Caja */}
+      {/* ── Estado de Caja ── */}
       <Row className="mb-4">
         <Col md={12}>
           <Card className={`border-0 shadow-sm border-start border-4 ${cajaAbierta ? 'border-success' : 'border-danger'}`}>
@@ -244,9 +499,6 @@ const FlujoCajaScreen = () => {
                       </strong>
                     </Col>
                     <Col md={3}>
-                      {/* FIX: mostrar ventas_dia desde estadoCaja (desde apertura),
-                          que es distinto de resumenVentas (filtro de fecha).
-                          Aclarar la diferencia con etiquetas claras. */}
                       {estadoCaja.ventas_dia && (
                         <div>
                           <small className="text-muted d-block">Ventas desde apertura</small>
@@ -281,7 +533,7 @@ const FlujoCajaScreen = () => {
         </Col>
       </Row>
 
-      {/* Resumen de Ventas */}
+      {/* ── Resumen de Ventas ── */}
       <Row className="mb-4">
         <Col md={4}>
           <Card className="border-0 shadow-sm h-100">
@@ -341,7 +593,121 @@ const FlujoCajaScreen = () => {
         </Col>
       </Row>
 
-      {/* Filtros */}
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      {/* ── CUADRÍCULA DE CIERRES DE CAJA ── */}
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      <Card className="border-0 shadow-sm mb-4">
+        <Card.Header className="bg-white d-flex justify-content-between align-items-center">
+          <h5 className="mb-0">
+            <i className="bi bi-archive me-2 text-danger"></i>
+            Historial de Cierres de Caja
+          </h5>
+          <div className="d-flex align-items-center gap-2">
+            <Badge bg="secondary" pill>{arqueosCerrados.length} cierres</Badge>
+            <Button
+              variant="outline-secondary"
+              size="sm"
+              onClick={loadHistorial}
+              disabled={loadingHistorial}
+            >
+              <i className={`bi bi-arrow-clockwise ${loadingHistorial ? 'spin' : ''}`}></i>
+            </Button>
+          </div>
+        </Card.Header>
+        <Card.Body className="p-0">
+          {loadingHistorial ? (
+            <div className="text-center py-4">
+              <Spinner animation="border" variant="primary" size="sm" />
+              <span className="ms-2 text-muted small">Cargando historial...</span>
+            </div>
+          ) : arqueosCerrados.length === 0 ? (
+            <div className="text-center py-5 text-muted">
+              <i className="bi bi-archive display-6 d-block mb-2 opacity-25"></i>
+              <div>No hay cierres de caja registrados</div>
+            </div>
+          ) : (
+            <div style={{ maxHeight: '360px', overflowY: 'auto' }}>
+              <Table hover className="mb-0 align-middle" style={{ fontSize: '0.875rem' }}>
+                <thead className="table-light" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
+                  <tr>
+                    <th>#</th>
+                    <th>Fecha</th>
+                    <th>Apertura</th>
+                    <th>Cierre</th>
+                    <th>Abrió</th>
+                    <th>Cerró</th>
+                    <th className="text-end">Monto Inicial</th>
+                    <th className="text-end">Monto Final</th>
+                    <th className="text-center">Diferencia</th>
+                    <th className="text-center">Ver Ventas</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {arqueosCerrados.map((arqueo, idx) => {
+                    const diferencia = num(arqueo.diferencia_usd);
+                    const monedaPrincipal =
+                      num(arqueo.monto_inicial_cop) > 0 ? 'COP'
+                      : num(arqueo.monto_inicial_usd) > 0 ? 'USD'
+                      : num(arqueo.monto_inicial_ves) > 0 ? 'VES'
+                      : null;
+
+                    return (
+                      <tr key={arqueo.id_arqueo}>
+                        <td className="text-muted small">{arqueo.id_arqueo}</td>
+                        <td className="fw-semibold">{formatFecha(arqueo.fecha_apertura)}</td>
+                        <td className="text-muted small">{formatHora(arqueo.fecha_apertura)}</td>
+                        <td className="text-muted small">{formatHora(arqueo.fecha_cierre)}</td>
+                        <td className="small">
+                          <i className="bi bi-person me-1 text-muted"></i>
+                          {arqueo.usuario_apertura || '—'}
+                        </td>
+                        <td className="small">
+                          <i className="bi bi-person-check me-1 text-muted"></i>
+                          {arqueo.usuario_cierre || '—'}
+                        </td>
+                        <td className="text-end small">
+                          {monedaPrincipal === 'COP' && formatCurrency(arqueo.monto_inicial_cop, 'COP')}
+                          {monedaPrincipal === 'USD' && formatCurrency(arqueo.monto_inicial_usd, 'USD')}
+                          {monedaPrincipal === 'VES' && formatCurrency(arqueo.monto_inicial_ves, 'VES')}
+                          {!monedaPrincipal && <span className="text-muted">—</span>}
+                        </td>
+                        <td className="text-end small">
+                          {monedaPrincipal === 'COP' && formatCurrency(arqueo.monto_final_cop, 'COP')}
+                          {monedaPrincipal === 'USD' && formatCurrency(arqueo.monto_final_usd, 'USD')}
+                          {monedaPrincipal === 'VES' && formatCurrency(arqueo.monto_final_ves, 'VES')}
+                          {!monedaPrincipal && <span className="text-muted">—</span>}
+                        </td>
+                        <td className="text-center">
+                          {diferencia === 0 ? (
+                            <Badge bg="success">Exacto</Badge>
+                          ) : diferencia > 0 ? (
+                            <Badge bg="info">+{formatCurrency(Math.abs(diferencia), 'USD')}</Badge>
+                          ) : (
+                            <Badge bg="danger">−{formatCurrency(Math.abs(diferencia), 'USD')}</Badge>
+                          )}
+                        </td>
+                        <td className="text-center">
+                          <Button
+                            variant="outline-primary"
+                            size="sm"
+                            onClick={() => handleVerDetalleCierre(arqueo)}
+                          >
+                            <i className="bi bi-receipt me-1"></i>
+                            Ver ventas
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </Table>
+            </div>
+          )}
+        </Card.Body>
+      </Card>
+      {/* ════════════════════════════════════════════════════════════════════ */}
+
+      {/* ── Filtros ── */}
       <Card className="border-0 shadow-sm mb-4">
         <Card.Body>
           <Row>
@@ -375,7 +741,7 @@ const FlujoCajaScreen = () => {
         </Card.Body>
       </Card>
 
-      {/* Tabla de Ventas del Período con paginación */}
+      {/* ── Tabla de Ventas del Período ── */}
       <Card className="border-0 shadow-sm mb-4">
         <Card.Header className="bg-white d-flex justify-content-between align-items-center">
           <h5 className="mb-0">
@@ -399,7 +765,6 @@ const FlujoCajaScreen = () => {
             </div>
           ) : (
             <>
-              {/* Tabla con altura máxima y scroll interno */}
               <div style={{ maxHeight: '420px', overflowY: 'auto' }}>
                 <Table hover className="mb-0" style={{ fontSize: '0.875rem' }}>
                   <thead className="table-light" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
@@ -454,9 +819,8 @@ const FlujoCajaScreen = () => {
                 </Table>
               </div>
 
-              {/* Footer con totales REALES del backend + paginación */}
+              {/* Footer con totales + paginación */}
               <div className="px-3 py-2 border-top bg-light d-flex justify-content-between align-items-center flex-wrap gap-2">
-                {/* Totales reales del resumen backend */}
                 <div className="d-flex gap-3 align-items-center flex-wrap">
                   <span className="fw-bold text-muted small">Total completadas:</span>
                   {Object.entries(totalesVentas).length > 0
@@ -470,7 +834,6 @@ const FlujoCajaScreen = () => {
                   }
                 </div>
 
-                {/* Paginación */}
                 {totalPaginas > 1 && (
                   <Pagination size="sm" className="mb-0">
                     <Pagination.First
@@ -513,7 +876,7 @@ const FlujoCajaScreen = () => {
         </Card.Body>
       </Card>
 
-      {/* Flujo de Caja (Movimientos) */}
+      {/* ── Flujo de Caja (Movimientos) ── */}
       <Card className="border-0 shadow-sm">
         <Card.Header className="bg-white">
           <h5 className="mb-0">Movimientos de Caja</h5>
@@ -582,20 +945,19 @@ const FlujoCajaScreen = () => {
         </Card.Body>
       </Card>
 
-      {/* Modales */}
+      {/* ── Modales ── */}
       <AbrirCajaModal
         show={showAbrirModal}
         onHide={() => setShowAbrirModal(false)}
-        onSuccess={loadData}
+        onSuccess={() => { loadData(); loadHistorial(); }}
       />
-      {/* FIX: pasar ventasDelDia al modal de cierre para que muestre la lista de ventas */}
       <CerrarCajaModal
         show={showCerrarModal}
         onHide={() => setShowCerrarModal(false)}
         estadoCaja={estadoCaja}
         resumenVentas={resumenVentas}
         ventasDelDia={ventasDelDia}
-        onSuccess={loadData}
+        onSuccess={() => { loadData(); loadHistorial(); }}
       />
       <TransaccionModal
         show={showTransaccionModal}
@@ -615,6 +977,28 @@ const FlujoCajaScreen = () => {
           setVentaDetalleId(null);
         }}
       />
+
+      {/* ✅ Modal de detalle del cierre de caja */}
+      <DetalleCierreModal
+        show={showDetalleCierre}
+        onHide={() => {
+          setShowDetalleCierre(false);
+          setArqueoSeleccionado(null);
+        }}
+        arqueo={arqueoSeleccionado}
+        onVerVenta={(id_venta) => {
+          // Cierra el modal de cierre y abre el de venta
+          setShowDetalleCierre(false);
+          setVentaDetalleId(id_venta);
+          setShowDetalleModal(true);
+        }}
+      />
+
+      {/* CSS para el ícono giratorio */}
+      <style>{`
+        .spin { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      `}</style>
     </div>
   );
 };
