@@ -102,7 +102,8 @@ export const SocketProvider = ({ children }) => {
 
 
     // Estado de pedido actualizado
-    newSocket.on('estado_pedido_actualizado', (data) => {
+    
+    /*newSocket.on('estado_pedido_actualizado', (data) => {
       console.log('🔄 Estado actualizado:', data);
       
       const mensajes = {
@@ -116,7 +117,7 @@ export const SocketProvider = ({ children }) => {
         position: 'bottom-right',
         autoClose: 3000
       });
-    });
+    }); */
 
     // Pedido aceptado
     newSocket.on('pedido_aceptado', (data) => {
