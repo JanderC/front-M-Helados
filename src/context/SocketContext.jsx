@@ -100,21 +100,6 @@ export const SocketProvider = ({ children }) => {
       }
     });
 
-    // Venta registrada (para admins)
-    newSocket.on('venta_registrada', (data) => {
-      console.log('💰 Venta registrada:', data);
-      
-      toast.success(
-        <div>
-          <strong>✅ Venta Registrada</strong>
-          <p className="mb-0">{data.numero_factura}</p>
-        </div>,
-        {
-          position: 'bottom-right',
-          autoClose: 3000
-        }
-      );
-    });
 
     // Estado de pedido actualizado
     newSocket.on('estado_pedido_actualizado', (data) => {
