@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react';
-import { Spinner } from 'react-bootstrap';
+import { useState, useEffect, useCallback } from 'react';
 import { ventasService } from '../../api/services/ventasService';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { toast } from 'react-toastify';
@@ -15,61 +14,121 @@ const COLORES_ESTADO = {
 
 const MONEDA_FLAGS = { COP: "🇨🇴", USD: "🇺🇸", VES: "🇻🇪" };
 
+const PAGE_SIZE = 20;
+
+// Devuelve la fecha de hoy en formato YYYY-MM-DD (local)
+const hoy = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 const ListaVentasScreen = () => {
-  const [ventas, setVentas] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
+  const [ventas, setVentas]                   = useState([]);
+  const [totalRegistros, setTotalRegistros]   = useState(0);
+  const [loading, setLoading]                 = useState(true);
+  const [showModal, setShowModal]             = useState(false);
   const [ventaSeleccionada, setVentaSeleccionada] = useState(null);
-  const [filtros, setFiltros] = useState({ estado_venta: '', fecha_inicio: '', fecha_fin: '' });
-  const [filtroActivo, setFiltroActivo] = useState('');
+  const [page, setPage]                       = useState(1);
+  const [filtros, setFiltros]                 = useState({ estado_venta: '', fecha_inicio: hoy(), fecha_fin: hoy() });
+  const [filtroActivo, setFiltroActivo]       = useState('');
 
-  useEffect(() => { loadVentas(); }, []);
+  const totalPages = Math.max(1, Math.ceil(totalRegistros / PAGE_SIZE));
 
-  const loadVentas = async (filtrosParam) => {
+  // ── Carga ──────────────────────────────────────────────────────────────────
+  const loadVentas = useCallback(async (filtrosParam, pageParam) => {
     try {
       setLoading(true);
-      const f = filtrosParam !== undefined ? filtrosParam : filtros;
-      const params = {};
+      const f  = filtrosParam !== undefined ? filtrosParam : filtros;
+      const pg = pageParam    !== undefined ? pageParam    : page;
+
+      const params = {
+        limit:  PAGE_SIZE,
+        offset: (pg - 1) * PAGE_SIZE,
+      };
       if (f.estado_venta) params.estado_venta = f.estado_venta;
       if (f.fecha_inicio) params.fecha_inicio = f.fecha_inicio;
-      if (f.fecha_fin) params.fecha_fin = f.fecha_fin;
+      if (f.fecha_fin)    params.fecha_fin    = f.fecha_fin;
+
       const response = await ventasService.getAll(params);
-      if (response.data.success) setVentas(response.data.data || []);
-    } catch (error) {
+      if (response.data.success) {
+        setVentas(response.data.data || []);
+        // El backend debe devolver response.data.total_count (ver ventasController actualizado)
+        setTotalRegistros(response.data.total_count ?? response.data.data?.length ?? 0);
+      }
+    } catch {
       toast.error('Error al cargar ventas');
     } finally {
       setLoading(false);
     }
-  };
+  }, [filtros, page]);
 
+  useEffect(() => { loadVentas(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Handlers ───────────────────────────────────────────────────────────────
   const handleVerDetalle = (venta) => {
     setVentaSeleccionada(venta.id_venta);
     setShowModal(true);
   };
 
   const handleFiltrarEstado = (estado) => {
-    const nuevo = filtroActivo === estado ? '' : estado;
+    const nuevo    = filtroActivo === estado ? '' : estado;
+    const nuevos   = { ...filtros, estado_venta: nuevo };
     setFiltroActivo(nuevo);
-    const nuevos = { ...filtros, estado_venta: nuevo };
     setFiltros(nuevos);
-    loadVentas(nuevos);
+    setPage(1);
+    loadVentas(nuevos, 1);
   };
 
-  const handleFiltrarFechas = () => { loadVentas(); };
+  const handleFiltrarFechas = () => {
+    setPage(1);
+    loadVentas(filtros, 1);
+  };
 
   const handleLimpiar = () => {
-    const limpios = { estado_venta: '', fecha_inicio: '', fecha_fin: '' };
+    const limpios = { estado_venta: '', fecha_inicio: hoy(), fecha_fin: hoy() };
     setFiltros(limpios);
     setFiltroActivo('');
-    loadVentas(limpios);
+    setPage(1);
+    loadVentas(limpios, 1);
   };
 
-  // Stats rápidos
+  const handleVerTodas = () => {
+    const todos = { estado_venta: '', fecha_inicio: '', fecha_fin: '' };
+    setFiltros(todos);
+    setFiltroActivo('');
+    setPage(1);
+    loadVentas(todos, 1);
+  };
+
+  const handlePage = (nueva) => {
+    if (nueva < 1 || nueva > totalPages) return;
+    setPage(nueva);
+    loadVentas(undefined, nueva);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // ── Stats de la página actual ──────────────────────────────────────────────
   const stats = {
-    total: ventas.length,
+    total:      totalRegistros,
     completadas: ventas.filter(v => v.estado_venta === 'COMPLETADA').length,
-    pendientes: ventas.filter(v => v.estado_venta === 'PENDIENTE').length,
-    en_proceso: ventas.filter(v => v.estado_venta === 'EN_PROCESO').length,
+    pendientes:  ventas.filter(v => v.estado_venta === 'PENDIENTE').length,
+    en_proceso:  ventas.filter(v => v.estado_venta === 'EN_PROCESO').length,
+  };
+
+  const esFiltroHoy = filtros.fecha_inicio === hoy() && filtros.fecha_fin === hoy() && !filtros.estado_venta;
+
+  // ── Paginación: números a mostrar ─────────────────────────────────────────
+  const paginasVisibles = () => {
+    const delta = 2;
+    const range = [];
+    const left  = Math.max(2, page - delta);
+    const right = Math.min(totalPages - 1, page + delta);
+    range.push(1);
+    if (left > 2) range.push('...');
+    for (let i = left; i <= right; i++) range.push(i);
+    if (right < totalPages - 1) range.push('...');
+    if (totalPages > 1) range.push(totalPages);
+    return range;
   };
 
   return (
@@ -297,6 +356,26 @@ const ListaVentasScreen = () => {
         }
         .limpiar-btn:hover { background: rgba(123,47,190,0.1); }
 
+        /* Banner "ver todas" */
+        .ver-todas-banner {
+          background: rgba(123,47,190,0.04);
+          border: 1.5px dashed rgba(123,47,190,0.2);
+          border-radius: 10px;
+          padding: 8px 14px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-family: 'DM Sans', sans-serif;
+          font-size: 0.8rem;
+          color: #7B2FBE;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s;
+          touch-action: manipulation;
+          white-space: nowrap;
+        }
+        .ver-todas-banner:hover { background: rgba(123,47,190,0.09); }
+
         /* Tabla/Cards de ventas */
         .ventas-panel {
           background: #fff;
@@ -311,6 +390,8 @@ const ListaVentasScreen = () => {
           display: flex;
           align-items: center;
           justify-content: space-between;
+          flex-wrap: wrap;
+          gap: 8px;
         }
         .ventas-count {
           font-family: 'DM Sans', sans-serif;
@@ -524,6 +605,68 @@ const ListaVentasScreen = () => {
           color: #c4b0d8;
         }
 
+        /* ── Paginación ── */
+        .pagination-bar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 14px 18px;
+          border-top: 1px solid rgba(123,47,190,0.08);
+          flex-wrap: wrap;
+          gap: 10px;
+        }
+        .pagination-info {
+          font-family: 'DM Sans', sans-serif;
+          font-size: 0.78rem;
+          color: #9580b0;
+          font-weight: 600;
+        }
+        .pagination-info strong {
+          color: #1a0a2e;
+        }
+        .pagination-btns {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+        .pg-btn {
+          min-width: 34px;
+          height: 34px;
+          border-radius: 9px;
+          border: 1.5px solid rgba(123,47,190,0.12);
+          background: #fff;
+          color: #5a4a72;
+          font-family: 'DM Sans', sans-serif;
+          font-weight: 700;
+          font-size: 0.82rem;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.15s;
+          padding: 0 8px;
+          touch-action: manipulation;
+          user-select: none;
+        }
+        .pg-btn:hover:not(:disabled) { background: rgba(123,47,190,0.08); border-color: #7B2FBE; color: #7B2FBE; }
+        .pg-btn.active {
+          background: linear-gradient(135deg, #7B2FBE, #5E1F96);
+          border-color: transparent;
+          color: #fff;
+          box-shadow: 0 3px 10px rgba(123,47,190,0.35);
+        }
+        .pg-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+        .pg-ellipsis {
+          width: 28px;
+          text-align: center;
+          color: #9580b0;
+          font-size: 0.85rem;
+          font-family: 'DM Sans', sans-serif;
+        }
+
+        /* Spin */
+        @keyframes spin { to { transform: rotate(360deg); } }
+
         /* Responsive */
         @media (max-width: 767px) {
           .stats-row { grid-template-columns: repeat(2, 1fr); }
@@ -534,6 +677,7 @@ const ListaVentasScreen = () => {
           .fecha-input { width: 100%; }
           .estado-chips { justify-content: flex-start; }
           .filtrar-btn, .limpiar-btn { justify-content: center; }
+          .pagination-bar { justify-content: center; }
         }
 
         @media (min-width: 768px) and (max-width: 991px) {
@@ -545,29 +689,38 @@ const ListaVentasScreen = () => {
           .stats-row { grid-template-columns: repeat(2, 1fr); gap: 8px; }
           .stat-card { padding: 12px; }
           .stat-num { font-size: 1.2rem; }
+          .pg-btn { min-width: 30px; height: 30px; font-size: 0.75rem; }
         }
       `}</style>
 
       <div className="lv-container">
-        {/* Header */}
+
+        {/* ── Header ── */}
         <div className="lv-header">
           <h2 className="lv-title">
             <div className="lv-title-icon"><i className="bi bi-receipt-cutoff"></i></div>
             Lista de Ventas
           </h2>
-          <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.82rem", color: "#9580b0" }}>
-            {new Date().toLocaleDateString("es-CO", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            {esFiltroHoy && (
+              <span style={{ background: "rgba(16,185,129,0.1)", color: "#10b981", borderRadius: 8, padding: "4px 10px", fontSize: "0.75rem", fontWeight: 700, fontFamily: "'DM Sans', sans-serif", border: "1px solid rgba(16,185,129,0.2)" }}>
+                📅 Hoy
+              </span>
+            )}
+            <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "0.82rem", color: "#9580b0" }}>
+              {new Date().toLocaleDateString("es-CO", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+            </span>
+          </div>
         </div>
 
-        {/* Stats */}
+        {/* ── Stats ── */}
         {!loading && (
           <div className="stats-row">
             {[
-              { key: "", label: "Total", num: stats.total, icon: "📋", bg: "rgba(123,47,190,0.08)", iconColor: "#7B2FBE" },
-              { key: "COMPLETADA", label: "Completadas", num: stats.completadas, icon: "✅", bg: "rgba(16,185,129,0.08)", iconColor: "#10b981" },
-              { key: "PENDIENTE", label: "Pendientes", num: stats.pendientes, icon: "⏳", bg: "rgba(99,102,241,0.08)", iconColor: "#6366f1" },
-              { key: "EN_PROCESO", label: "En Proceso", num: stats.en_proceso, icon: "⚡", bg: "rgba(245,158,11,0.08)", iconColor: "#f59e0b" },
+              { key: "",           label: "Total del día",  num: stats.total,       icon: "📋", bg: "rgba(123,47,190,0.08)", iconColor: "#7B2FBE" },
+              { key: "COMPLETADA", label: "Completadas",    num: stats.completadas, icon: "✅", bg: "rgba(16,185,129,0.08)", iconColor: "#10b981" },
+              { key: "PENDIENTE",  label: "Pendientes",     num: stats.pendientes,  icon: "⏳", bg: "rgba(99,102,241,0.08)", iconColor: "#6366f1" },
+              { key: "EN_PROCESO", label: "En Proceso",     num: stats.en_proceso,  icon: "⚡", bg: "rgba(245,158,11,0.08)", iconColor: "#f59e0b" },
             ].map((s) => (
               <div
                 key={s.key}
@@ -586,7 +739,7 @@ const ListaVentasScreen = () => {
           </div>
         )}
 
-        {/* Filtros */}
+        {/* ── Filtros ── */}
         <div className="filtros-panel">
           <div className="filtros-title">
             <i className="bi bi-funnel-fill"></i>
@@ -621,24 +774,30 @@ const ListaVentasScreen = () => {
               {(filtros.fecha_inicio || filtros.fecha_fin || filtroActivo) && (
                 <button className="limpiar-btn" onClick={handleLimpiar}>
                   <i className="bi bi-x-circle"></i>
-                  Limpiar
+                  Hoy
                 </button>
               )}
+              <button className="ver-todas-banner" onClick={handleVerTodas} title="Ver todas las ventas sin filtro de fecha">
+                <i className="bi bi-calendar-range"></i>
+                Ver todas
+              </button>
             </div>
           </div>
         </div>
 
-        {/* Panel de ventas */}
+        {/* ── Panel de ventas ── */}
         <div className="ventas-panel">
           <div className="ventas-panel-header">
             <div className="ventas-count">
-              Mostrando <span>{ventas.length}</span> ventas
-              {filtroActivo && <> con estado <span>{filtroActivo}</span></>}
+              {totalRegistros > 0
+                ? <>Mostrando <span>{(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, totalRegistros)}</span> de <span>{totalRegistros}</span> ventas{filtroActivo && <> · estado <span>{filtroActivo}</span></>}</>
+                : <>Sin ventas{filtroActivo ? ` con estado "${filtroActivo}"` : ""}</>
+              }
             </div>
             {loading && (
               <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#9580b0", fontSize: "0.78rem" }}>
                 <div style={{ width: 14, height: 14, border: "2px solid rgba(123,47,190,0.2)", borderTopColor: "#7B2FBE", borderRadius: "50%", animation: "spin 0.7s linear infinite" }}></div>
-                Actualizando...
+                Cargando...
               </div>
             )}
           </div>
@@ -658,8 +817,8 @@ const ListaVentasScreen = () => {
           ) : ventas.length === 0 ? (
             <div className="empty-state">
               <div className="empty-icon">🍦</div>
-              <div className="empty-title">No hay ventas{filtroActivo ? ` con estado "${filtroActivo}"` : ""}</div>
-              <div className="empty-sub">{filtroActivo ? "Prueba con otro filtro" : "Las ventas aparecerán aquí"}</div>
+              <div className="empty-title">No hay ventas{filtroActivo ? ` con estado "${filtroActivo}"` : esFiltroHoy ? " hoy" : ""}</div>
+              <div className="empty-sub">{filtroActivo ? "Prueba con otro filtro" : esFiltroHoy ? "Las ventas del día aparecerán aquí" : "Las ventas aparecerán aquí"}</div>
             </div>
           ) : (
             <>
@@ -748,6 +907,37 @@ const ListaVentasScreen = () => {
                   );
                 })}
               </div>
+
+              {/* ── Paginación ── */}
+              {totalPages > 1 && (
+                <div className="pagination-bar">
+                  <div className="pagination-info">
+                    Página <strong>{page}</strong> de <strong>{totalPages}</strong>
+                    &nbsp;·&nbsp; <strong>{totalRegistros}</strong> ventas en total
+                  </div>
+                  <div className="pagination-btns">
+                    <button className="pg-btn" onClick={() => handlePage(1)} disabled={page === 1} title="Primera página">
+                      <i className="bi bi-chevron-double-left"></i>
+                    </button>
+                    <button className="pg-btn" onClick={() => handlePage(page - 1)} disabled={page === 1} title="Anterior">
+                      <i className="bi bi-chevron-left"></i>
+                    </button>
+
+                    {paginasVisibles().map((p, i) =>
+                      p === '...'
+                        ? <span key={`e${i}`} className="pg-ellipsis">…</span>
+                        : <button key={p} className={`pg-btn ${p === page ? 'active' : ''}`} onClick={() => handlePage(p)}>{p}</button>
+                    )}
+
+                    <button className="pg-btn" onClick={() => handlePage(page + 1)} disabled={page === totalPages} title="Siguiente">
+                      <i className="bi bi-chevron-right"></i>
+                    </button>
+                    <button className="pg-btn" onClick={() => handlePage(totalPages)} disabled={page === totalPages} title="Última página">
+                      <i className="bi bi-chevron-double-right"></i>
+                    </button>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
