@@ -243,6 +243,10 @@ const FlujoCajaScreen = () => {
   const [paginaCierres, setPaginaCierres]       = useState(1);
   const CIERRES_POR_PAGINA = 8;
 
+  // Paginación de movimientos de caja
+  const [paginaFlujo, setPaginaFlujo]           = useState(1);
+  const FLUJO_POR_PAGINA = 10;
+
   // Modales
   const [showAbrirModal, setShowAbrirModal]             = useState(false);
   const [showCerrarModal, setShowCerrarModal]           = useState(false);
@@ -280,8 +284,10 @@ const FlujoCajaScreen = () => {
       if (flujoRes.status === 'fulfilled') {
         const d = flujoRes.value.data?.data || [];
         setFlujo(Array.isArray(d) ? d : []);
+        setPaginaFlujo(1);
       } else {
         setFlujo([]);
+        setPaginaFlujo(1);
       }
       if (resumenRes.status === 'fulfilled') {
         setResumenVentas(resumenRes.value.data?.data || resumenRes.value.data);
@@ -417,6 +423,14 @@ const FlujoCajaScreen = () => {
   const cierresPaginados     = arqueosCerrados.slice(
     (paginaCierres - 1) * CIERRES_POR_PAGINA,
     paginaCierres * CIERRES_POR_PAGINA
+  );
+
+  // Paginación de movimientos de caja (flujo)
+  const flujoArray           = Array.isArray(flujo) ? flujo : [];
+  const totalPaginasFlujo    = Math.ceil(flujoArray.length / FLUJO_POR_PAGINA);
+  const flujoPaginado        = flujoArray.slice(
+    (paginaFlujo - 1) * FLUJO_POR_PAGINA,
+    paginaFlujo * FLUJO_POR_PAGINA
   );
 
   // Totales del mes: suma de ventas netas (monto_final − monto_inicial) por moneda
@@ -903,63 +917,105 @@ const FlujoCajaScreen = () => {
 
       {/* ── Movimientos de Caja ── */}
       <Card className="border-0 shadow-sm">
-        <Card.Header className="bg-white">
-          <h5 className="mb-0">Movimientos de Caja</h5>
+        <Card.Header className="bg-white d-flex justify-content-between align-items-center">
+          <h5 className="mb-0">
+            <i className="bi bi-arrow-left-right me-2 text-secondary"></i>
+            Movimientos de Caja
+          </h5>
+          {flujoArray.length > 0 && (
+            <Badge bg="secondary" pill>{flujoArray.length} movimiento{flujoArray.length !== 1 ? 's' : ''}</Badge>
+          )}
         </Card.Header>
-        <Card.Body>
-          <div className="table-responsive">
-            <Table hover>
-              <thead className="table-light">
-                <tr>
-                  <th>Fecha</th>
-                  <th>Tipo</th>
-                  <th>Concepto</th>
-                  <th>Moneda</th>
-                  <th className="text-end">Monto</th>
-                </tr>
-              </thead>
-              <tbody>
-                {!Array.isArray(flujo) || flujo.length === 0 ? (
-                  <tr>
-                    <td colSpan="5" className="text-center py-4 text-muted">
-                      No hay movimientos en el período seleccionado
-                    </td>
-                  </tr>
-                ) : (
-                  flujo.map((item, index) => {
-                    const tipo   = item.tipo_transaccion;
-                    const moneda = item.codigo_moneda;
-                    return (
-                      <tr key={item.id_transaccion || index}>
-                        <td>{formatDateTime(item.fecha_transaccion)}</td>
-                        <td><Badge bg={tipo === 'INGRESO' ? 'success' : 'danger'}>{tipo}</Badge></td>
-                        <td>{item.concepto}</td>
-                        <td><Badge bg="secondary">{moneda}</Badge></td>
-                        <td className={`text-end fw-bold ${tipo === 'INGRESO' ? 'text-success' : 'text-danger'}`}>
-                          {tipo === 'INGRESO' ? '+' : '-'}{formatCurrency(item.monto, moneda)}
-                        </td>
-                      </tr>
-                    );
-                  })
+        <Card.Body className="p-0">
+          {flujoArray.length === 0 ? (
+            <div className="text-center py-5 text-muted">
+              <i className="bi bi-inbox display-6 d-block mb-2 opacity-25"></i>
+              No hay movimientos en el período seleccionado
+            </div>
+          ) : (
+            <>
+              <div className="table-responsive">
+                <Table hover className="mb-0" style={{ fontSize: '0.875rem' }}>
+                  <thead className="table-light">
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Tipo</th>
+                      <th>Concepto</th>
+                      <th>Moneda</th>
+                      <th className="text-end">Monto</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {flujoPaginado.map((item, index) => {
+                      const tipo   = item.tipo_transaccion;
+                      const moneda = item.codigo_moneda;
+                      return (
+                        <tr key={item.id_transaccion || index}>
+                          <td>{formatDateTime(item.fecha_transaccion)}</td>
+                          <td><Badge bg={tipo === 'INGRESO' ? 'success' : 'danger'}>{tipo}</Badge></td>
+                          <td>{item.concepto}</td>
+                          <td><Badge bg="secondary">{moneda}</Badge></td>
+                          <td className={`text-end fw-bold ${tipo === 'INGRESO' ? 'text-success' : 'text-danger'}`}>
+                            {tipo === 'INGRESO' ? '+' : '-'}{formatCurrency(item.monto, moneda)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </Table>
+              </div>
+
+              {/* ── Pie: paginación + balance ── */}
+              <div className="px-3 py-2 border-top bg-light d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div className="d-flex align-items-center gap-2 flex-wrap">
+                  <span className="text-muted small fw-semibold">Balance del período:</span>
+                  {Object.entries(totales).map(([moneda, balance]) => (
+                    <span key={moneda} className={`fw-bold small ${balance >= 0 ? 'text-success' : 'text-danger'}`}>
+                      {balance >= 0 ? '+' : ''}{formatCurrency(balance, moneda)}{' '}
+                      <Badge bg="secondary" className="small">{moneda}</Badge>
+                    </span>
+                  ))}
+                </div>
+
+                {totalPaginasFlujo > 1 && (
+                  <Pagination size="sm" className="mb-0">
+                    <Pagination.First
+                      disabled={paginaFlujo === 1}
+                      onClick={() => setPaginaFlujo(1)}
+                    />
+                    <Pagination.Prev
+                      disabled={paginaFlujo === 1}
+                      onClick={() => setPaginaFlujo(p => p - 1)}
+                    />
+                    {Array.from({ length: Math.min(5, totalPaginasFlujo) }, (_, i) => {
+                      let start = Math.max(1, paginaFlujo - 2);
+                      const end = Math.min(start + 4, totalPaginasFlujo);
+                      start = Math.max(1, end - 4);
+                      const page = start + i;
+                      if (page > totalPaginasFlujo) return null;
+                      return (
+                        <Pagination.Item
+                          key={page}
+                          active={page === paginaFlujo}
+                          onClick={() => setPaginaFlujo(page)}
+                        >
+                          {page}
+                        </Pagination.Item>
+                      );
+                    })}
+                    <Pagination.Next
+                      disabled={paginaFlujo === totalPaginasFlujo}
+                      onClick={() => setPaginaFlujo(p => p + 1)}
+                    />
+                    <Pagination.Last
+                      disabled={paginaFlujo === totalPaginasFlujo}
+                      onClick={() => setPaginaFlujo(totalPaginasFlujo)}
+                    />
+                  </Pagination>
                 )}
-              </tbody>
-              {Array.isArray(flujo) && flujo.length > 0 && (
-                <tfoot className="table-light">
-                  <tr>
-                    <td colSpan="4" className="text-end"><strong>Balance del período:</strong></td>
-                    <td className="text-end">
-                      {Object.entries(totales).map(([moneda, balance]) => (
-                        <div key={moneda} className={`fw-bold ${balance >= 0 ? 'text-success' : 'text-danger'}`}>
-                          {balance >= 0 ? '+' : ''}{formatCurrency(balance, moneda)}
-                          <Badge bg="secondary" className="ms-1 small">{moneda}</Badge>
-                        </div>
-                      ))}
-                    </td>
-                  </tr>
-                </tfoot>
-              )}
-            </Table>
-          </div>
+              </div>
+            </>
+          )}
         </Card.Body>
       </Card>
 
