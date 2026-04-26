@@ -11,7 +11,6 @@ import AbrirCajaModal from '../../components/caja/AbrirCajaModal';
 import CerrarCajaModal from '../../components/caja/CerrarCajaModal';
 import TransaccionModal from '../../components/caja/TransaccionModal';
 import DetalleVentaModal from '../../components/ventas/DetalleVentaModal';
-import MovimientoRapidoModal from '../../components/caja/MovimientoRapidoModal';
 
 const VENTAS_POR_PAGINA = 15;
 
@@ -248,12 +247,8 @@ const FlujoCajaScreen = () => {
   const [showTransaccionModal, setShowTransaccionModal] = useState(false);
   const [showDetalleModal, setShowDetalleModal]         = useState(false);
   const [ventaDetalleId, setVentaDetalleId]             = useState(null);
-  const [showDetalleCierre, setShowDetalleCierre]             = useState(false);
-  const [arqueoSeleccionado, setArqueoSeleccionado]           = useState(null);
-  // Modal movimiento rápido (ingreso / egreso)
-  const [showMovimientoModal, setShowMovimientoModal]         = useState(false);
-  const [tipoMovimientoInicial, setTipoMovimientoInicial]     = useState(null);
-  const abrirMovimiento = (tipo) => { setTipoMovimientoInicial(tipo); setShowMovimientoModal(true); };
+  const [showDetalleCierre, setShowDetalleCierre]       = useState(false);
+  const [arqueoSeleccionado, setArqueoSeleccionado]     = useState(null);
 
   const [filtros, setFiltros] = useState({
     fechaInicio: getFechaLocal(),
@@ -444,19 +439,13 @@ const FlujoCajaScreen = () => {
           <i className="bi bi-cash-stack me-2 text-primary"></i>
           Flujo de Caja
         </h2>
-        <div className="d-flex gap-2 flex-wrap">
+        <div className="d-flex gap-2">
           {cajaAbierta ? (
             <>
-              <Button variant="success" onClick={() => abrirMovimiento('INGRESO')} title="Registrar ingreso">
-                <i className="bi bi-arrow-down-circle me-2"></i>Ingreso
+              <Button variant="outline-primary" onClick={() => setShowTransaccionModal(true)}>
+                <i className="bi bi-plus-circle me-2"></i>Nueva Transacción
               </Button>
-              <Button variant="danger" onClick={() => abrirMovimiento('EGRESO')} title="Registrar egreso">
-                <i className="bi bi-arrow-up-circle me-2"></i>Egreso
-              </Button>
-              <Button variant="outline-secondary" onClick={() => setShowTransaccionModal(true)}>
-                <i className="bi bi-plus-circle me-2"></i>Transacción
-              </Button>
-              <Button variant="outline-danger" onClick={() => setShowCerrarModal(true)}>
+              <Button variant="danger" onClick={() => setShowCerrarModal(true)}>
                 <i className="bi bi-lock me-2"></i>Cerrar Caja
               </Button>
             </>
@@ -573,83 +562,8 @@ const FlujoCajaScreen = () => {
         </Col>
       </Row>
 
-      {/* ── Movimientos Rápidos + Balance Neto del día ── */}
-      {cajaAbierta && (
-        <Row className="mb-4">
-          {/* Acceso rápido */}
-          <Col md={5}>
-            <Card className="border-0 shadow-sm h-100" style={{ background: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)' }}>
-              <Card.Body className="d-flex flex-column justify-content-center">
-                <p className="text-muted mb-2 fw-semibold">
-                  <i className="bi bi-lightning-charge me-1 text-warning"></i>
-                  Registrar Movimiento Rápido
-                </p>
-                <p className="text-muted small mb-3">
-                  Registra ingresos o egresos manuales que se sumarán al balance del período actual.
-                </p>
-                <div className="d-flex gap-2">
-                  <Button
-                    variant="success"
-                    className="flex-fill fw-bold"
-                    onClick={() => abrirMovimiento('INGRESO')}
-                  >
-                    <i className="bi bi-arrow-down-circle me-2"></i>+ Ingreso
-                  </Button>
-                  <Button
-                    variant="danger"
-                    className="flex-fill fw-bold"
-                    onClick={() => abrirMovimiento('EGRESO')}
-                  >
-                    <i className="bi bi-arrow-up-circle me-2"></i>− Egreso
-                  </Button>
-                </div>
-              </Card.Body>
-            </Card>
-          </Col>
-
-          {/* Balance neto de movimientos manuales del período */}
-          <Col md={7}>
-            <Card className="border-0 shadow-sm h-100">
-              <Card.Body>
-                <p className="text-muted mb-2 fw-semibold">
-                  <i className="bi bi-bar-chart-line me-1 text-primary"></i>
-                  Balance de Movimientos del Período
-                </p>
-                {Object.keys(totales).length === 0 ? (
-                  <p className="text-muted small mb-0">No hay movimientos registrados en el período seleccionado.</p>
-                ) : (
-                  <div className="d-flex flex-wrap gap-3">
-                    {Object.entries(totales).map(([moneda, balance]) => {
-                      const ingresos = Array.isArray(flujo)
-                        ? flujo.filter(f => f.tipo_transaccion === 'INGRESO' && f.codigo_moneda === moneda).reduce((s, f) => s + num(f.monto), 0)
-                        : 0;
-                      const egresos = Array.isArray(flujo)
-                        ? flujo.filter(f => f.tipo_transaccion === 'EGRESO' && f.codigo_moneda === moneda).reduce((s, f) => s + num(f.monto), 0)
-                        : 0;
-                      return (
-                        <div key={moneda} className="border rounded-3 p-3" style={{ minWidth: 160 }}>
-                          <div className="small text-muted mb-1 fw-semibold">{moneda}</div>
-                          <div className="small text-success mb-1">
-                            <i className="bi bi-arrow-down me-1"></i>
-                            Ingresos: <strong>{formatCurrency(ingresos, moneda)}</strong>
-                          </div>
-                          <div className="small text-danger mb-2">
-                            <i className="bi bi-arrow-up me-1"></i>
-                            Egresos: <strong>{formatCurrency(egresos, moneda)}</strong>
-                          </div>
-                          <div className={`fw-bold ${balance >= 0 ? 'text-success' : 'text-danger'}`}>
-                            {balance >= 0 ? '+' : ''}{formatCurrency(balance, moneda)}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </Card.Body>
-            </Card>
-          </Col>
-        </Row>
-      )}
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      {/* ── HISTORIAL DE CIERRES DEL MES ── */}
       {/* ══════════════════════════════════════════════════════════════════════ */}
       <Card className="border-0 shadow-sm mb-4">
         <Card.Header className="bg-white">
@@ -739,7 +653,7 @@ const FlujoCajaScreen = () => {
                       <th>Abrió</th>
                       <th>Cerró</th>
                       <th className="text-end">Monto Inicial</th>
-                      <th className="text-end">Monto Final</th>
+                      <th className="text-end">Ventas del Día</th>
                       <th className="text-center">Diferencia</th>
                       <th className="text-center">Ver Ventas</th>
                     </tr>
@@ -752,6 +666,11 @@ const FlujoCajaScreen = () => {
                         : num(arqueo.monto_inicial_usd) > 0 ? 'USD'
                         : num(arqueo.monto_inicial_ves) > 0 ? 'VES'
                         : null;
+
+                      // Ventas netas = monto_final - monto_inicial por cada moneda
+                      const ventasCOP = num(arqueo.monto_final_cop) - num(arqueo.monto_inicial_cop);
+                      const ventasUSD = num(arqueo.monto_final_usd) - num(arqueo.monto_inicial_usd);
+                      const ventasVES = num(arqueo.monto_final_ves) - num(arqueo.monto_inicial_ves);
 
                       return (
                         <tr key={arqueo.id_arqueo}>
@@ -773,12 +692,23 @@ const FlujoCajaScreen = () => {
                             {monedaPrincipal === 'VES' && formatCurrency(arqueo.monto_inicial_ves, 'VES')}
                             {!monedaPrincipal && <span className="text-muted">—</span>}
                           </td>
+
+                          {/* ── Ventas del día (monto_final − monto_inicial) por cada moneda ── */}
                           <td className="text-end small fw-semibold">
-                            {monedaPrincipal === 'COP' && formatCurrency(arqueo.monto_final_cop, 'COP')}
-                            {monedaPrincipal === 'USD' && formatCurrency(arqueo.monto_final_usd, 'USD')}
-                            {monedaPrincipal === 'VES' && formatCurrency(arqueo.monto_final_ves, 'VES')}
-                            {!monedaPrincipal && <span className="text-muted">—</span>}
+                            {ventasCOP > 0 && (
+                              <div className="text-success">{formatCurrency(ventasCOP, 'COP')}</div>
+                            )}
+                            {ventasUSD > 0 && (
+                              <div className="text-success">{formatCurrency(ventasUSD, 'USD')}</div>
+                            )}
+                            {ventasVES > 0 && (
+                              <div className="text-success">{formatCurrency(ventasVES, 'VES')}</div>
+                            )}
+                            {ventasCOP <= 0 && ventasUSD <= 0 && ventasVES <= 0 && (
+                              <span className="text-muted">—</span>
+                            )}
                           </td>
+
                           <td className="text-center">
                             {diferencia === 0 ? (
                               <Badge bg="success">Exacto</Badge>
@@ -1044,12 +974,6 @@ const FlujoCajaScreen = () => {
         show={showTransaccionModal}
         onHide={() => setShowTransaccionModal(false)}
         onSuccess={loadData}
-      />
-      <MovimientoRapidoModal
-        show={showMovimientoModal}
-        onHide={() => setShowMovimientoModal(false)}
-        onSuccess={loadData}
-        tipoInicial={tipoMovimientoInicial}
       />
       <DetalleVentaModal
         show={showDetalleModal}
