@@ -26,7 +26,7 @@ export const SocketProvider = ({ children }) => {
     }
 
     // Crear conexión de socket
-    const newSocket = io('https://back-backend-m-helados-production.up.railway.app/', {
+    const newSocket = io('http://localhost:5000/', {
       auth: {
         token: token
       },
