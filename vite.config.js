@@ -7,7 +7,7 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'http://localhost:5000/', // Cambia esto por tu URL del backend
+        target: 'https://back-backend-m-helados-production.up.railway.app/', // Cambia esto por tu URL del backend
         changeOrigin: true
       }
     }
