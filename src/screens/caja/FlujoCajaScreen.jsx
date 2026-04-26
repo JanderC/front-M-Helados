@@ -240,6 +240,8 @@ const FlujoCajaScreen = () => {
   const [historial, setHistorial]               = useState([]);
   const [loadingHistorial, setLoadingHistorial] = useState(false);
   const [mesHistorial, setMesHistorial]         = useState(getMesActual());
+  const [paginaCierres, setPaginaCierres]       = useState(1);
+  const CIERRES_POR_PAGINA = 8;
 
   // Modales
   const [showAbrirModal, setShowAbrirModal]             = useState(false);
@@ -330,6 +332,7 @@ const FlujoCajaScreen = () => {
   const handleCambiarMes = (e) => {
     const nuevo = e.target.value;
     setMesHistorial(nuevo);
+    setPaginaCierres(1);
     loadHistorial(nuevo);
   };
 
@@ -338,6 +341,7 @@ const FlujoCajaScreen = () => {
     const d = new Date(y, m - 1 + delta, 1);
     const nuevo = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     setMesHistorial(nuevo);
+    setPaginaCierres(1);
     loadHistorial(nuevo);
   };
 
@@ -408,17 +412,21 @@ const FlujoCajaScreen = () => {
   const totalPaginas  = Math.ceil(totalVentasCount / VENTAS_POR_PAGINA);
   const arqueosCerrados = historial.filter(a => a.estado === 'CERRADA');
 
-  // Totales acumulados del mes (monto final de cada cierre)
+  // Paginación de cierres
+  const totalPaginasCierres  = Math.ceil(arqueosCerrados.length / CIERRES_POR_PAGINA);
+  const cierresPaginados     = arqueosCerrados.slice(
+    (paginaCierres - 1) * CIERRES_POR_PAGINA,
+    paginaCierres * CIERRES_POR_PAGINA
+  );
+
+  // Totales del mes: suma de ventas netas (monto_final − monto_inicial) por moneda
   const totalesMes = arqueosCerrados.reduce((acc, a) => {
-    const m =
-      num(a.monto_inicial_cop) > 0 ? 'COP'
-      : num(a.monto_inicial_usd) > 0 ? 'USD'
-      : num(a.monto_inicial_ves) > 0 ? 'VES'
-      : null;
-    if (!m) return acc;
-    const final = m === 'COP' ? num(a.monto_final_cop) : m === 'USD' ? num(a.monto_final_usd) : num(a.monto_final_ves);
-    if (!acc[m]) acc[m] = 0;
-    acc[m] += final;
+    const ventasCOP = num(a.monto_final_cop) - num(a.monto_inicial_cop);
+    const ventasUSD = num(a.monto_final_usd) - num(a.monto_inicial_usd);
+    const ventasVES = num(a.monto_final_ves) - num(a.monto_inicial_ves);
+    if (ventasCOP > 0) { acc['COP'] = (acc['COP'] || 0) + ventasCOP; }
+    if (ventasUSD > 0) { acc['USD'] = (acc['USD'] || 0) + ventasUSD; }
+    if (ventasVES > 0) { acc['VES'] = (acc['VES'] || 0) + ventasVES; }
     return acc;
   }, {});
 
@@ -568,7 +576,6 @@ const FlujoCajaScreen = () => {
       <Card className="border-0 shadow-sm mb-4">
         <Card.Header className="bg-white">
           <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
-            {/* Título */}
             <h5 className="mb-0">
               <i className="bi bi-archive me-2 text-danger"></i>
               Cierres de Caja —{' '}
@@ -577,40 +584,14 @@ const FlujoCajaScreen = () => {
               </span>
             </h5>
 
-            {/* Controles de navegación por mes */}
             <div className="d-flex align-items-center gap-2 flex-wrap">
-              {/* Totales acumulados del mes como badges */}
+              {/* Totales ventas netas del mes */}
               {Object.entries(totalesMes).map(([moneda, total]) => (
                 <Badge key={moneda} bg="light" text="dark" className="border px-2 py-1 fs-6">
                   <span className="text-success fw-bold">{formatCurrency(total, moneda)}</span>{' '}
                   <span className="text-muted small">{moneda}</span>
                 </Badge>
               ))}
-
-              <Button variant="outline-secondary" size="sm" onClick={() => cambiarMesRelativo(-1)} title="Mes anterior">
-                <i className="bi bi-chevron-left"></i>
-              </Button>
-
-              <Form.Select
-                size="sm"
-                value={mesHistorial}
-                onChange={handleCambiarMes}
-                style={{ width: 'auto', minWidth: 170 }}
-              >
-                {opcionesMeses.map(({ val, label }) => (
-                  <option key={val} value={val} className="text-capitalize">{label}</option>
-                ))}
-              </Form.Select>
-
-              <Button
-                variant="outline-secondary"
-                size="sm"
-                onClick={() => cambiarMesRelativo(1)}
-                disabled={mesHistorial >= getMesActual()}
-                title="Mes siguiente"
-              >
-                <i className="bi bi-chevron-right"></i>
-              </Button>
 
               <Button
                 variant="outline-secondary"
@@ -638,13 +619,12 @@ const FlujoCajaScreen = () => {
                 No hay cierres en{' '}
                 <strong className="text-capitalize">{getNombreMes(mesHistorial)}</strong>
               </div>
-              <div className="small mt-1">Usa las flechas para navegar entre meses</div>
             </div>
           ) : (
             <>
-              <div style={{ maxHeight: '380px', overflowY: 'auto' }}>
+              <div className="table-responsive">
                 <Table hover className="mb-0 align-middle" style={{ fontSize: '0.875rem' }}>
-                  <thead className="table-light" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
+                  <thead className="table-light">
                     <tr>
                       <th>#</th>
                       <th>Fecha</th>
@@ -659,7 +639,7 @@ const FlujoCajaScreen = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {arqueosCerrados.map((arqueo) => {
+                    {cierresPaginados.map((arqueo) => {
                       const diferencia = num(arqueo.diferencia_usd);
                       const monedaPrincipal =
                         num(arqueo.monto_inicial_cop) > 0 ? 'COP'
@@ -667,7 +647,6 @@ const FlujoCajaScreen = () => {
                         : num(arqueo.monto_inicial_ves) > 0 ? 'VES'
                         : null;
 
-                      // Ventas netas = monto_final - monto_inicial por cada moneda
                       const ventasCOP = num(arqueo.monto_final_cop) - num(arqueo.monto_inicial_cop);
                       const ventasUSD = num(arqueo.monto_final_usd) - num(arqueo.monto_inicial_usd);
                       const ventasVES = num(arqueo.monto_final_ves) - num(arqueo.monto_inicial_ves);
@@ -692,23 +671,12 @@ const FlujoCajaScreen = () => {
                             {monedaPrincipal === 'VES' && formatCurrency(arqueo.monto_inicial_ves, 'VES')}
                             {!monedaPrincipal && <span className="text-muted">—</span>}
                           </td>
-
-                          {/* ── Ventas del día (monto_final − monto_inicial) por cada moneda ── */}
                           <td className="text-end small fw-semibold">
-                            {ventasCOP > 0 && (
-                              <div className="text-success">{formatCurrency(ventasCOP, 'COP')}</div>
-                            )}
-                            {ventasUSD > 0 && (
-                              <div className="text-success">{formatCurrency(ventasUSD, 'USD')}</div>
-                            )}
-                            {ventasVES > 0 && (
-                              <div className="text-success">{formatCurrency(ventasVES, 'VES')}</div>
-                            )}
-                            {ventasCOP <= 0 && ventasUSD <= 0 && ventasVES <= 0 && (
-                              <span className="text-muted">—</span>
-                            )}
+                            {ventasCOP > 0 && <div className="text-success">{formatCurrency(ventasCOP, 'COP')}</div>}
+                            {ventasUSD > 0 && <div className="text-success">{formatCurrency(ventasUSD, 'USD')}</div>}
+                            {ventasVES > 0 && <div className="text-success">{formatCurrency(ventasVES, 'VES')}</div>}
+                            {ventasCOP <= 0 && ventasUSD <= 0 && ventasVES <= 0 && <span className="text-muted">—</span>}
                           </td>
-
                           <td className="text-center">
                             {diferencia === 0 ? (
                               <Badge bg="success">Exacto</Badge>
@@ -734,25 +702,64 @@ const FlujoCajaScreen = () => {
                 </Table>
               </div>
 
-              {/* Pie: totales del mes */}
-              <div className="px-3 py-2 border-top bg-light d-flex align-items-center gap-3 flex-wrap">
-                <span className="text-muted small fw-semibold">
-                  <i className="bi bi-calculator me-1"></i>
-                  Total recaudado en{' '}
-                  <span className="text-capitalize">{getNombreMes(mesHistorial)}</span>:
-                </span>
-                {Object.entries(totalesMes).length > 0
-                  ? Object.entries(totalesMes).map(([moneda, total]) => (
-                      <span key={moneda} className="fw-bold text-success">
-                        {formatCurrency(total, moneda)}{' '}
-                        <Badge bg="secondary" className="small">{moneda}</Badge>
-                      </span>
-                    ))
-                  : <span className="text-muted small">Sin datos</span>
-                }
-                <span className="ms-auto text-muted small">
-                  {arqueosCerrados.length} cierre{arqueosCerrados.length !== 1 ? 's' : ''} en el mes
-                </span>
+              {/* ── Pie: paginación + totales ── */}
+              <div className="px-3 py-2 border-top bg-light d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div className="d-flex align-items-center gap-3 flex-wrap">
+                  <span className="text-muted small fw-semibold">
+                    <i className="bi bi-calculator me-1"></i>
+                    Total ventas{' '}
+                    <span className="text-capitalize">{getNombreMes(mesHistorial)}</span>:
+                  </span>
+                  {Object.entries(totalesMes).length > 0
+                    ? Object.entries(totalesMes).map(([moneda, total]) => (
+                        <span key={moneda} className="fw-bold text-success">
+                          {formatCurrency(total, moneda)}{' '}
+                          <Badge bg="secondary" className="small">{moneda}</Badge>
+                        </span>
+                      ))
+                    : <span className="text-muted small">Sin datos</span>
+                  }
+                  <span className="text-muted small">
+                    · {arqueosCerrados.length} cierre{arqueosCerrados.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+
+                {totalPaginasCierres > 1 && (
+                  <Pagination size="sm" className="mb-0">
+                    <Pagination.First
+                      disabled={paginaCierres === 1}
+                      onClick={() => setPaginaCierres(1)}
+                    />
+                    <Pagination.Prev
+                      disabled={paginaCierres === 1}
+                      onClick={() => setPaginaCierres(p => p - 1)}
+                    />
+                    {Array.from({ length: Math.min(5, totalPaginasCierres) }, (_, i) => {
+                      let start = Math.max(1, paginaCierres - 2);
+                      const end = Math.min(start + 4, totalPaginasCierres);
+                      start = Math.max(1, end - 4);
+                      const page = start + i;
+                      if (page > totalPaginasCierres) return null;
+                      return (
+                        <Pagination.Item
+                          key={page}
+                          active={page === paginaCierres}
+                          onClick={() => setPaginaCierres(page)}
+                        >
+                          {page}
+                        </Pagination.Item>
+                      );
+                    })}
+                    <Pagination.Next
+                      disabled={paginaCierres === totalPaginasCierres}
+                      onClick={() => setPaginaCierres(p => p + 1)}
+                    />
+                    <Pagination.Last
+                      disabled={paginaCierres === totalPaginasCierres}
+                      onClick={() => setPaginaCierres(totalPaginasCierres)}
+                    />
+                  </Pagination>
+                )}
               </div>
             </>
           )}
