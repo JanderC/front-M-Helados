@@ -8,15 +8,17 @@ export const monedasService = {
 
   // Obtener tasa VES actual
   getTasaVES: () => {
-    return api.get('/monedas/tasa-ves');
+    return api.get('/monedas/tasa-actual');
   },
 
-  // Actualizar desde BCV
+  // Actualizar desde BCV (API)
   actualizarBCV: () => {
-    return api.post('/monedas/actualizar-bcv');
+    return api.post('/monedas/actualizar');
   },
 
-  // Actualizar manual
+  // Actualizar manualmente una sola moneda (ej: VES)
+  // Hace el mismo UPDATE sobre tasa_cambio_usd / fecha_actualizacion
+  // que el flujo automático, solo que con un valor ingresado a mano.
   actualizarManual: (codigo_moneda, tasa_cambio_usd) => {
     return api.put('/monedas/actualizar-manual', {
       codigo_moneda,
@@ -24,7 +26,7 @@ export const monedasService = {
     });
   },
 
-  // Actualizar múltiples tasas
+  // Actualizar múltiples tasas manualmente en un solo lote
   actualizarMultiples: (tasas) => {
     return api.put('/monedas/actualizar-multiples', {
       tasas

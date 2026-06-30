@@ -10,6 +10,9 @@ const TasasScreen = () => {
   const [tasas, setTasas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actualizandoBCV, setActualizandoBCV] = useState(false);
+  const [modoVES, setModoVES] = useState('api'); // 'api' | 'manual'
+  const [tasaManualVES, setTasaManualVES] = useState('');
+  const [actualizandoManualVES, setActualizandoManualVES] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showConvertidorModal, setShowConvertidorModal] = useState(false);
   const [tasaSeleccionada, setTasaSeleccionada] = useState(null);
@@ -78,6 +81,30 @@ const TasasScreen = () => {
     }
   };
 
+  // Actualiza únicamente la tasa VES de forma manual, con el mismo
+  // comportamiento de "un clic = se actualiza" que el botón de la API,
+  // reutilizando el mismo endpoint/columna que ya existe (sin tablas
+  // ni columnas nuevas).
+  const handleActualizarManualVES = async () => {
+    if (!tasaManualVES || isNaN(tasaManualVES) || parseFloat(tasaManualVES) <= 0) {
+      toast.warning('Ingrese una tasa válida mayor a 0');
+      return;
+    }
+
+    try {
+      setActualizandoManualVES(true);
+      await monedasService.actualizarManual('VES', parseFloat(tasaManualVES));
+      toast.success('Tasa VES actualizada manualmente');
+      setTasaManualVES('');
+      await loadTasas();
+    } catch (error) {
+      console.error('Error al actualizar tasa VES manual:', error);
+      toast.error(error.response?.data?.message || 'Error al actualizar la tasa manualmente');
+    } finally {
+      setActualizandoManualVES(false);
+    }
+  };
+
   const handleChangeTasa = (codigo, valor) => {
     setTasasEditables({
       ...tasasEditables,
@@ -89,7 +116,7 @@ const TasasScreen = () => {
     try {
       setGuardando(true);
       const tasasArray = Object.entries(tasasEditables)
-        .filter(([codigo, tasa]) => codigo !== 'USD' && tasa && parseFloat(tasa) > 0)
+        .filter(([codigo, tasa]) => codigo !== 'USD' && codigo !== 'VES' && tasa && parseFloat(tasa) > 0)
         .map(([codigo_moneda, tasa_cambio_usd]) => ({
           codigo_moneda,
           tasa_cambio_usd: parseFloat(tasa_cambio_usd)
@@ -264,26 +291,76 @@ const TasasScreen = () => {
                   {parseFloat(tasasEditables.VES || 0).toFixed(2)} Bs.
                 </Badge>
               </div>
-              <Button 
-                variant="info" 
-                size="sm" 
-                className="w-100"
-                onClick={handleActualizarBCV}
-                disabled={actualizandoBCV}
-                style={{ fontWeight: '500' }}
-              >
-                {actualizandoBCV ? (
-                  <>
-                    <Spinner animation="border" size="sm" className="me-2" />
-                    Actualizando...
-                  </>
-                ) : (
-                  <>
-                    <i className="bi bi-cloud-download me-2"></i>
-                    Actualizar desde BCV
-                  </>
-                )}
-              </Button>
+              <div className="d-flex gap-2 mb-3">
+                <Button
+                  size="sm"
+                  variant={modoVES === 'api' ? 'info' : 'outline-info'}
+                  className="flex-fill"
+                  onClick={() => setModoVES('api')}
+                  style={{ fontWeight: '500' }}
+                >
+                  <i className="bi bi-cloud-arrow-down me-1"></i>
+                  Automático
+                </Button>
+                <Button
+                  size="sm"
+                  variant={modoVES === 'manual' ? 'info' : 'outline-info'}
+                  className="flex-fill"
+                  onClick={() => setModoVES('manual')}
+                  style={{ fontWeight: '500' }}
+                >
+                  <i className="bi bi-pencil me-1"></i>
+                  Manual
+                </Button>
+              </div>
+
+              {modoVES === 'api' ? (
+                <Button
+                  variant="info"
+                  size="sm"
+                  className="w-100"
+                  onClick={handleActualizarBCV}
+                  disabled={actualizandoBCV}
+                  style={{ fontWeight: '500' }}
+                >
+                  {actualizandoBCV ? (
+                    <>
+                      <Spinner animation="border" size="sm" className="me-2" />
+                      Actualizando...
+                    </>
+                  ) : (
+                    <>
+                      <i className="bi bi-cloud-download me-2"></i>
+                      Actualizar desde BCV
+                    </>
+                  )}
+                </Button>
+              ) : (
+                <div className="input-group input-group-sm">
+                  <span className="input-group-text">Bs.</span>
+                  <Form.Control
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={tasaManualVES}
+                    onChange={(e) => setTasaManualVES(e.target.value)}
+                    placeholder="Ej: 205.50"
+                    disabled={actualizandoManualVES}
+                  />
+                  <Button
+                    variant="info"
+                    onClick={handleActualizarManualVES}
+                    disabled={actualizandoManualVES}
+                    style={{ fontWeight: '500' }}
+                  >
+                    {actualizandoManualVES ? (
+                      <Spinner animation="border" size="sm" />
+                    ) : (
+                      <i className="bi bi-check-lg"></i>
+                    )}
+                  </Button>
+                </div>
+              )}
               {getTasaInfo('VES') && (
                 <small className="text-muted d-block mt-2">
                   Actualizado: {formatDateTime(getTasaInfo('VES').fecha_actualizacion)}
@@ -356,31 +433,10 @@ const TasasScreen = () => {
             <i className="bi bi-exclamation-triangle me-2"></i>
             <strong>Atención:</strong> Ingrese las tasas de cambio con respecto al dólar (USD). 
             Por ejemplo, si 1 USD = 4,000 COP, ingrese 4000 en el campo de COP.
+            La tasa de VES se gestiona desde la tarjeta superior (Automático/Manual).
           </Alert>
 
           <Row className="g-3">
-            <Col xs={12} md={6}>
-              <Form.Group>
-                <Form.Label className="fw-bold">
-                  Bolívar Venezolano (VES)
-                  <small className="text-muted ms-2" style={{ fontWeight: '400' }}>1 USD = ? Bs.</small>
-                </Form.Label>
-                <div className="input-group">
-                  <span className="input-group-text">Bs.</span>
-                  <Form.Control
-                    type="number"
-                    step="0.01"
-                    value={tasasEditables.VES}
-                    onChange={(e) => handleChangeTasa('VES', e.target.value)}
-                    placeholder="Ej: 205.50"
-                  />
-                </div>
-                <Form.Text className="text-muted">
-                  Equivalencia: 1 Bs. = ${(1 / parseFloat(tasasEditables.VES || 1)).toFixed(6)} USD
-                </Form.Text>
-              </Form.Group>
-            </Col>
-
             <Col xs={12} md={6}>
               <Form.Group>
                 <Form.Label className="fw-bold">
