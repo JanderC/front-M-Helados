@@ -8,12 +8,12 @@ export const monedasService = {
 
   // Obtener tasa VES actual
   getTasaVES: () => {
-    return api.get('/monedas/tasa-actual');
+    return api.get('/monedas/tasa-ves');
   },
 
-  // Actualizar desde BCV (API)
+  // Actualizar desde BCV (API) — pueden llamarse las veces que quieran
   actualizarBCV: () => {
-    return api.post('/monedas/actualizar');
+    return api.post('/monedas/actualizar-bcv');
   },
 
   // Actualizar manualmente una sola moneda (ej: VES)
