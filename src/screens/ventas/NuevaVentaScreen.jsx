@@ -1440,6 +1440,15 @@ const NuevaVentaScreen = () => {
               formatCurrency={formatCurrency}
               extrasModal={extrasModal}
               setExtrasModal={setExtrasModal}
+              metodosPago={metodosPago}
+              pagos={pagos}
+              agregarLineaPago={agregarLineaPago}
+              quitarLineaPago={quitarLineaPago}
+              actualizarLineaPago={actualizarLineaPago}
+              pagosCuadran={pagosCuadran}
+              pagosCompletos={pagosCompletos}
+              totalPagosUSD={totalPagosUSD}
+              totalVentaUSD={totalVentaUSD}
             />
           </div>
         </div>
@@ -1486,6 +1495,15 @@ const NuevaVentaScreen = () => {
               formatCurrency={formatCurrency}
               extrasModal={extrasModal}
               setExtrasModal={setExtrasModal}
+              metodosPago={metodosPago}
+              pagos={pagos}
+              agregarLineaPago={agregarLineaPago}
+              quitarLineaPago={quitarLineaPago}
+              actualizarLineaPago={actualizarLineaPago}
+              pagosCuadran={pagosCuadran}
+              pagosCompletos={pagosCompletos}
+              totalPagosUSD={totalPagosUSD}
+              totalVentaUSD={totalVentaUSD}
               onClose={() => setCarritoAbierto(false)}
               isMobile
             />
@@ -1513,6 +1531,8 @@ const CarritoContent = ({
   totalMoneda, montoRecibido, setMontoRecibido, mostrarVuelto, setMostrarVuelto,
   procesarVenta, procesando, getPrecioItem, formatCurrency,
   extrasModal, setExtrasModal,
+  metodosPago, pagos, agregarLineaPago, quitarLineaPago, actualizarLineaPago,
+  pagosCuadran, pagosCompletos, totalPagosUSD, totalVentaUSD,
   onClose, isMobile
 }) => {
   const totalItems = carrito.reduce((s, i) => s + i.cantidad, 0);
