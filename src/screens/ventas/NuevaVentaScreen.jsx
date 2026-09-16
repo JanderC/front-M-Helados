@@ -1022,6 +1022,48 @@ const NuevaVentaScreen = () => {
         .procesar-btn:active:not(:disabled) { transform: scale(0.98); }
         .procesar-btn:disabled { opacity: 0.7; cursor: not-allowed; }
 
+        /* ✅ NUEVO: Métodos de pago */
+        .pago-section { margin-bottom: 12px; }
+        .pago-header {
+          display: flex; justify-content: space-between; align-items: center;
+          margin-bottom: 6px;
+        }
+        .pago-label {
+          font-family: 'DM Sans', sans-serif; font-weight: 700; font-size: 0.7rem;
+          text-transform: uppercase; letter-spacing: 0.08em; color: #9580b0;
+          display: flex; align-items: center; gap: 4px;
+        }
+        .pago-add-btn {
+          background: none; border: none; color: #7B2FBE;
+          font-family: 'DM Sans', sans-serif; font-weight: 700; font-size: 0.78rem;
+          cursor: pointer; display: flex; align-items: center; gap: 4px; padding: 2px 4px;
+        }
+        .pago-row { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
+        .pago-select, .pago-moneda-select {
+          background: #f5f0fb; border: 1.5px solid rgba(123,47,190,0.12); border-radius: 9px;
+          padding: 9px 10px; font-family: 'DM Sans', sans-serif; font-weight: 600;
+          font-size: 0.82rem; color: #1a0a2e; outline: none; box-sizing: border-box;
+        }
+        .pago-select { flex: 1.4; min-width: 0; }
+        .pago-moneda-select { flex: 0.8; }
+        .pago-monto-input {
+          flex: 1; background: #f5f0fb; border: 1.5px solid rgba(123,47,190,0.12);
+          border-radius: 9px; padding: 9px 10px; font-family: 'Syne', sans-serif;
+          font-weight: 700; font-size: 0.9rem; color: #1a0a2e; outline: none;
+          box-sizing: border-box; min-width: 0;
+        }
+        .pago-select:focus, .pago-moneda-select:focus, .pago-monto-input:focus { border-color: #7B2FBE; background: #fff; }
+        .pago-remove-btn {
+          background: none; border: none; color: #ef4444; cursor: pointer;
+          display: flex; align-items: center; justify-content: center; padding: 4px; flex-shrink: 0;
+        }
+        .pago-match-msg {
+          display: flex; align-items: center; gap: 4px; font-size: 0.76rem;
+          font-family: 'DM Sans', sans-serif; font-weight: 600; margin-top: 2px;
+        }
+        .pago-match-msg.ok { color: #10b981; }
+        .pago-match-msg.bad { color: #ef4444; }
+
         /* FAB móvil */
         .carrito-fab {
           display: none;
