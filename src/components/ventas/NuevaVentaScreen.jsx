@@ -5,9 +5,20 @@ import { toppingsService } from '../../api/services/toppingsService';
 import { saboresService } from '../../api/services/saboresService';
 import { ventasService } from '../../api/services/ventasService';
 import { monedasService } from '../../api/services/monedasService';
+import { metodosPagoService } from '../../api/services/metodosPagoService';
 import { toast } from 'react-toastify';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import DetalleVentaModal from '../../components/ventas/DetalleVentaModal';
+
+// ✅ NUEVO: línea de pago vacía. Con una sola línea, moneda/monto se
+// autocompletan con la moneda y el total de la venta; con varias, el
+// usuario los edita a mano (pago dividido).
+const pagoVacio = (moneda, monto = '') => ({
+  id: Date.now() + Math.random(),
+  id_metodo_pago: '',
+  moneda,
+  monto
+});
 
 const NuevaVentaScreen = () => {
   const [productos, setProductos] = useState([]);
@@ -24,9 +35,13 @@ const NuevaVentaScreen = () => {
   const [ventasRecientes, setVentasRecientes] = useState([]);
   const [showDetalleModal, setShowDetalleModal] = useState(false);
   const [ventaSeleccionada, setVentaSeleccionada] = useState(null);
-  
+
   // Estado simple para nombre del cliente
   const [nombreCliente, setNombreCliente] = useState('');
+
+  // ✅ NUEVO: métodos de pago
+  const [metodosPago, setMetodosPago] = useState([]);
+  const [pagos, setPagos] = useState([pagoVacio('COP')]);
 
   useEffect(() => {
     loadData();
@@ -35,13 +50,14 @@ const NuevaVentaScreen = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [prodResponse, toppResponse, saboresResponse, tasasResponse, catResponse, ventasResponse] = await Promise.all([
+      const [prodResponse, toppResponse, saboresResponse, tasasResponse, catResponse, ventasResponse, metodosPagoResponse] = await Promise.all([
         productosService.getAll(),
         toppingsService.getAll(),
         saboresService.getAll({ disponible: 'true' }),
         monedasService.getTasas(),
         productosService.getCategorias(),
-        ventasService.getAll({ limit: 10 })
+        ventasService.getAll({ limit: 10 }),
+        metodosPagoService.getAll({ activo: 'true' }) // ✅ NUEVO
       ]);
       
       setProductos(prodResponse.data?.data || prodResponse.data || []);
@@ -62,6 +78,7 @@ const NuevaVentaScreen = () => {
       
       setCategorias(catResponse.data?.data || catResponse.data || []);
       setVentasRecientes(ventasResponse.data?.data || ventasResponse.data || []);
+      setMetodosPago(metodosPagoResponse.data?.data || metodosPagoResponse.data || []); // ✅ NUEVO
     } catch (error) {
       console.error('Error al cargar datos:', error);
       toast.error('Error al cargar datos');
@@ -210,9 +227,63 @@ const NuevaVentaScreen = () => {
     ? totalUSD
     : totalUSD * (tasas['VES'] || 1);
 
+  // ✅ NUEVO: mientras solo haya una línea de pago, se sincroniza sola con
+  // la moneda y el total de la venta. Si el usuario agrega más líneas
+  // (pago dividido), deja de autocompletarse y las edita a mano.
+  useEffect(() => {
+    if (pagos.length === 1) {
+      setPagos([{
+        ...pagos[0],
+        moneda: monedaSeleccionada,
+        monto: totalMoneda ? totalMoneda.toFixed(2) : ''
+      }]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [monedaSeleccionada, totalMoneda]);
+
+  const agregarLineaPago = () => {
+    setPagos([...pagos, pagoVacio(monedaSeleccionada)]);
+  };
+
+  const quitarLineaPago = (id) => {
+    setPagos(pagos.filter(p => p.id !== id));
+  };
+
+  const actualizarLineaPago = (id, campo, valor) => {
+    setPagos(pagos.map(p => (p.id === id ? { ...p, [campo]: valor } : p)));
+  };
+
+  // ✅ NUEVO: total esperado en USD y lo que suman las líneas de pago en USD
+  // (cada línea puede estar en una moneda distinta, por eso se convierte)
+  const totalVentaUSD = monedaSeleccionada === 'USD'
+    ? totalMoneda
+    : totalMoneda / (tasas[monedaSeleccionada] || 1);
+
+  const totalPagosUSD = pagos.reduce((sum, p) => {
+    const monto = parseFloat(p.monto) || 0;
+    const montoUSD = p.moneda === 'USD' ? monto : monto / (tasas[p.moneda] || 1);
+    return sum + montoUSD;
+  }, 0);
+
+  const toleranciaUSD = Math.max(1, totalVentaUSD * 0.02); // 2% o 1 USD, lo que sea mayor
+  const pagosCuadran = pagos.length === 1
+    ? true
+    : Math.abs(totalPagosUSD - totalVentaUSD) <= toleranciaUSD;
+  const pagosCompletos = pagos.every(p => p.id_metodo_pago && parseFloat(p.monto) > 0);
+
   const procesarVenta = async () => {
     if (carrito.length === 0) {
       toast.warning('El carrito está vacío');
+      return;
+    }
+
+    if (!pagosCompletos) {
+      toast.warning('Selecciona el método de pago y el monto de cada línea');
+      return;
+    }
+
+    if (!pagosCuadran) {
+      toast.warning('La suma de los pagos no coincide con el total de la venta');
       return;
     }
 
@@ -240,11 +311,22 @@ const NuevaVentaScreen = () => {
         }))
       }));
 
+      // ✅ NUEVO: pagos (uno o varios métodos, cada uno con su propia moneda)
+      const pagosPayload = pagos.map(p => {
+        const monedaDelPago = monedas.find(m => m.codigo_moneda === p.moneda);
+        return {
+          id_metodo_pago: parseInt(p.id_metodo_pago, 10),
+          id_moneda: monedaDelPago?.id_moneda,
+          monto: parseFloat(p.monto)
+        };
+      });
+
       const ventaData = {
         nombre_cliente: nombreCliente.trim() || null, // ACTUALIZADO: enviar nombre simple
         id_moneda: monedaObj.id_moneda,
         monto_total: totalMoneda,
-        productos: detalles
+        productos: detalles,
+        pagos: pagosPayload // ✅ NUEVO
       };
 
       await ventasService.create(ventaData);
@@ -252,6 +334,7 @@ const NuevaVentaScreen = () => {
       toast.success('Venta procesada correctamente');
       setCarrito([]);
       setNombreCliente(''); // Limpiar nombre del cliente
+      setPagos([pagoVacio(monedaSeleccionada)]); // ✅ NUEVO: reset de pagos
       loadData();
 
     } catch (error) {
@@ -328,7 +411,7 @@ const NuevaVentaScreen = () => {
                       onChange={(e) => setFiltroCategoria(e.target.value)}
                     >
                       <option value="">Todas las categorías</option>
-                      {categorias.map((cat) => (
+                      {categorias.map(cat => (
                         <option key={cat.id_categoria} value={cat.id_categoria}>
                           {cat.nombre_categoria}
                         </option>
@@ -340,12 +423,12 @@ const NuevaVentaScreen = () => {
             </Card.Body>
           </Card>
 
-          {/* Productos Grid */}
-          <Row>
+          {/* Grid de productos */}
+          <Row xs={2} md={3} lg={3} className="g-3 mb-4">
             {productosFiltrados.map(producto => (
-              <Col key={producto.id_producto} md={6} lg={4} className="mb-3">
-                <Card 
-                  className="h-100 border-0 shadow-sm" 
+              <Col key={producto.id_producto}>
+                <Card
+                  className="h-100 border-0 shadow-sm product-card"
                   style={{ cursor: 'pointer' }}
                   onClick={() => agregarAlCarrito(producto)}
                 >
@@ -353,89 +436,28 @@ const NuevaVentaScreen = () => {
                     <Card.Img
                       variant="top"
                       src={producto.imagen_url}
-                      alt={producto.nombre_producto}
-                      style={{ height: '150px', objectFit: 'cover' }}
+                      style={{ height: '120px', objectFit: 'cover' }}
                     />
                   )}
-                  <Card.Body>
-                    <Card.Title className="small">{producto.nombre_producto}</Card.Title>
-                    <div className="d-flex justify-content-between align-items-center">
-                      <h5 className="mb-0 text-primary">
-                        {monedaSeleccionada === 'COP' 
+                  <Card.Body className="p-2">
+                    <Card.Title className="fs-6 mb-1">{producto.nombre_producto}</Card.Title>
+                    <Card.Text className="mb-0">
+                      <strong className="text-primary">
+                        {monedaSeleccionada === 'COP'
                           ? formatCurrency(producto.precio_base, 'COP')
                           : monedaSeleccionada === 'USD'
                           ? formatCurrency(producto.precio_usd, 'USD')
-                          : formatCurrency(producto.precio_usd * tasas['VES'], 'VES')
-                        }
-                      </h5>
-                      <Button variant="primary" size="sm">
-                        <i className="bi bi-plus"></i>
-                      </Button>
-                    </div>
+                          : formatCurrency(producto.precio_usd * (tasas['VES'] || 1), 'VES')}
+                      </strong>
+                    </Card.Text>
                   </Card.Body>
                 </Card>
               </Col>
             ))}
           </Row>
-
-          {/* Ventas Recientes */}
-          <Card className="border-0 shadow-sm mt-4">
-            <Card.Header className="bg-white">
-              <h5 className="mb-0">
-                <i className="bi bi-clock-history me-2"></i>
-                Ventas Recientes
-              </h5>
-            </Card.Header>
-            <Card.Body>
-              <Table hover responsive>
-                <thead>
-                  <tr>
-                    <th>Fecha</th>
-                    <th>Cliente</th>
-                    <th>Moneda</th>
-                    <th>Total</th>
-                    <th>Estado</th>
-                    <th>Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ventasRecientes.map(venta => (
-                    <tr key={venta.id_venta}>
-                      <td className="small">{formatDateTime(venta.fecha_venta)}</td>
-                      <td>{venta.nombre_cliente || '-'}</td>
-                      <td>
-                        <Badge bg="secondary">{venta.codigo_moneda}</Badge>
-                      </td>
-                      <td className="fw-bold">
-                        {formatCurrency(venta.total, venta.codigo_moneda)}
-                      </td>
-                      <td>
-                        <Badge bg={
-                          venta.estado === 'completada' ? 'success' :
-                          venta.estado === 'preparando' ? 'warning' :
-                          venta.estado === 'entregada' ? 'info' : 'secondary'
-                        }>
-                          {venta.estado}
-                        </Badge>
-                      </td>
-                      <td>
-                        <Button
-                          variant="outline-primary"
-                          size="sm"
-                          onClick={() => handleVerDetalle(venta.id_venta)}
-                        >
-                          <i className="bi bi-eye"></i>
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </Table>
-            </Card.Body>
-          </Card>
         </Col>
 
-        {/* Columna del Carrito */}
+        {/* Columna de Carrito */}
         <Col lg={4}>
           <Card className="border-0 shadow-sm sticky-top" style={{ top: '20px' }}>
             <Card.Header className="bg-primary text-white">
@@ -615,6 +637,84 @@ const NuevaVentaScreen = () => {
             
             {carrito.length > 0 && (
               <Card.Footer className="bg-light">
+                {/* ✅ NUEVO: Métodos de pago */}
+                <div className="mb-3">
+                  <div className="d-flex justify-content-between align-items-center mb-2">
+                    <strong>
+                      <i className="bi bi-wallet2 me-2"></i>
+                      Método{pagos.length > 1 ? 's' : ''} de pago
+                    </strong>
+                    <Button variant="link" size="sm" className="p-0" onClick={agregarLineaPago}>
+                      <i className="bi bi-plus-circle me-1"></i>
+                      Dividir pago
+                    </Button>
+                  </div>
+
+                  {pagos.map((pago) => (
+                    <Row key={pago.id} className="g-2 mb-2 align-items-center">
+                      <Col xs={pagos.length > 1 ? 5 : 7}>
+                        <Form.Select
+                          size="sm"
+                          value={pago.id_metodo_pago}
+                          onChange={(e) => actualizarLineaPago(pago.id, 'id_metodo_pago', e.target.value)}
+                        >
+                          <option value="">Método...</option>
+                          {metodosPago
+                            .filter(mp => !mp.id_moneda || mp.codigo_moneda === pago.moneda)
+                            .map(mp => (
+                              <option key={mp.id_metodo_pago} value={mp.id_metodo_pago}>
+                                {mp.nombre}
+                              </option>
+                            ))}
+                        </Form.Select>
+                      </Col>
+                      {pagos.length > 1 && (
+                        <Col xs={3}>
+                          <Form.Select
+                            size="sm"
+                            value={pago.moneda}
+                            onChange={(e) => actualizarLineaPago(pago.id, 'moneda', e.target.value)}
+                          >
+                            <option value="COP">COP</option>
+                            <option value="VES">VES</option>
+                            <option value="USD">USD</option>
+                          </Form.Select>
+                        </Col>
+                      )}
+                      <Col xs={pagos.length > 1 ? 3 : 5}>
+                        <Form.Control
+                          size="sm"
+                          type="number"
+                          step="0.01"
+                          value={pago.monto}
+                          placeholder="Monto"
+                          onChange={(e) => actualizarLineaPago(pago.id, 'monto', e.target.value)}
+                          disabled={pagos.length === 1}
+                        />
+                      </Col>
+                      {pagos.length > 1 && (
+                        <Col xs={1} className="text-end">
+                          <Button
+                            variant="link"
+                            size="sm"
+                            className="text-danger p-0"
+                            onClick={() => quitarLineaPago(pago.id)}
+                          >
+                            <i className="bi bi-x-lg"></i>
+                          </Button>
+                        </Col>
+                      )}
+                    </Row>
+                  ))}
+
+                  {pagos.length > 1 && (
+                    <div className={`small mt-1 ${pagosCuadran ? 'text-success' : 'text-danger'}`}>
+                      <i className={`bi ${pagosCuadran ? 'bi-check-circle' : 'bi-exclamation-triangle'} me-1`}></i>
+                      Pagos: ≈ ${totalPagosUSD.toFixed(2)} USD &nbsp;/&nbsp; Venta: ≈ ${totalVentaUSD.toFixed(2)} USD
+                    </div>
+                  )}
+                </div>
+
                 <div className="d-flex justify-content-between align-items-center mb-3">
                   <strong>Total {monedaSeleccionada}:</strong>
                   <h4 className="mb-0 text-success">
@@ -626,7 +726,7 @@ const NuevaVentaScreen = () => {
                   className="w-100"
                   size="lg"
                   onClick={procesarVenta}
-                  disabled={procesando}
+                  disabled={procesando || !pagosCuadran || !pagosCompletos}
                 >
                   {procesando ? (
                     <>

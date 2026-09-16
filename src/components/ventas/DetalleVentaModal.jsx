@@ -366,6 +366,40 @@ const DetalleVentaModal = ({ show, onHide, ventaId, onStatusChange }) => {
               </Row>
             </div>
 
+            {/* ✅ NUEVO - Métodos de pago usados en la venta */}
+            {venta.pagos && venta.pagos.length > 0 && (
+              <div className="pt-3 mt-3" style={{ borderTop: '2px solid rgba(139, 79, 184, 0.2)' }}>
+                <h6
+                  className="pb-2 mb-3"
+                  style={{
+                    color: '#8B4FB8',
+                    fontWeight: '600'
+                  }}
+                >
+                  <i className="bi bi-wallet2 me-2"></i>
+                  {venta.pagos.length > 1 ? 'Pago dividido entre' : 'Pagado con'}
+                </h6>
+                <div className="d-flex flex-wrap gap-2">
+                  {venta.pagos.map((pago) => (
+                    <Badge
+                      key={pago.id_pago}
+                      bg="light"
+                      text="dark"
+                      className="py-2 px-3"
+                      style={{
+                        border: '2px solid rgba(139, 79, 184, 0.25)',
+                        fontWeight: '600',
+                        fontSize: '0.9rem'
+                      }}
+                    >
+                      <i className={`bi ${pago.metodo_icono || 'bi-cash'} me-1`}></i>
+                      {pago.metodo_nombre}: {formatCurrency(pago.monto, pago.codigo_moneda)}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Acciones de Estado */}
             {venta.estado_venta === 'PENDIENTE' && (
               <Alert 

@@ -17,12 +17,15 @@ const num = (v) => parseFloat(v) || 0;
  *      estadoCaja.monto_inicial_cop / usd / ves
  *      estadoCaja.fecha_apertura
  *      estadoCaja.usuario_apertura
+ *      estadoCaja.desglose_metodos_pago = [{ codigo, nombre, icono, codigo_moneda, total, cantidad_ventas }] ✅ NUEVO
  *  - resumenVentas: objeto con totales reales del período (pasado desde FlujoCajaScreen)
  *      { total_cop, total_usd_original, total_ves, total_usd, total_ventas }
+ *  - desglosePagos: array [{ codigo, nombre, icono, codigo_moneda, total, cantidad_ventas }] ✅ NUEVO
+ *      (si no se pasa explícito, se usa estadoCaja.desglose_metodos_pago)
  *  - ventasDelDia: array de ventas para mostrar en la lista del modal
  *  - onSuccess: fn callback tras cerrar con éxito
  */
-const CerrarCajaModal = ({ show, onHide, estadoCaja, resumenVentas, ventasDelDia = [], onSuccess }) => {
+const CerrarCajaModal = ({ show, onHide, estadoCaja, resumenVentas, desglosePagos, ventasDelDia = [], onSuccess }) => {
   const [cerrando, setCerrando]         = useState(false);
   const [observaciones, setObservaciones] = useState('');
   const [mostrarVentas, setMostrarVentas] = useState(false);
@@ -51,6 +54,9 @@ const CerrarCajaModal = ({ show, onHide, estadoCaja, resumenVentas, ventasDelDia
   const ventasVES    = num(ventasFuente.total_ves);
   const totalVentas  = parseInt(ventasFuente.total_ventas) || 0;
   const totalUSDRef  = num(ventasFuente.total_usd);
+
+  // ✅ NUEVO: desglose por método de pago (Nequi, Pago Móvil, Bancolombia, etc.)
+  const desglosePagosData = desglosePagos || estadoCaja?.desglose_metodos_pago || [];
 
   /* ── Montos iniciales de la caja ── */
   const inicialCOP = num(estadoCaja?.monto_inicial_cop);
@@ -222,7 +228,7 @@ const CerrarCajaModal = ({ show, onHide, estadoCaja, resumenVentas, ventasDelDia
           font-weight: 800; font-family: 'Syne', sans-serif; font-size: 0.875rem;
         }
 
-        /* ── Resumen por moneda ── */
+        /* ── Resumen por moneda / por método de pago ── */
         .cm-resumen-box {
           background: #f8f7ff;
           border: 1px solid rgba(123,47,190,0.1);
@@ -246,6 +252,7 @@ const CerrarCajaModal = ({ show, onHide, estadoCaja, resumenVentas, ventasDelDia
         .tag-COP { background: rgba(245,158,11,0.12); color: #92400e; }
         .tag-USD { background: rgba(34,197,94,0.12);  color: #15803d; }
         .tag-VES { background: rgba(59,130,246,0.12); color: #1d4ed8; }
+        .tag-METODO { background: rgba(123,47,190,0.1); color: #7B2FBE; }
 
         .cm-resumen-cells {
           display: flex;
@@ -281,6 +288,12 @@ const CerrarCajaModal = ({ show, onHide, estadoCaja, resumenVentas, ventasDelDia
           display: flex; align-items: center; gap: 8px;
         }
         .cm-section-title::after { content:''; flex:1; height:1px; background:rgba(123,47,190,0.1); }
+
+        /* ── Desglose por método de pago (grid) ── */
+        .cm-metodos-grid {
+          display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+          gap: 10px; margin-bottom: 20px;
+        }
 
         /* ── Conteo físico ── */
         .cm-monto-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-bottom: 4px; }
@@ -499,6 +512,38 @@ const CerrarCajaModal = ({ show, onHide, estadoCaja, resumenVentas, ventasDelDia
                 </div>
               </div>
             </div>
+
+            {/* ── ✅ NUEVO: Desglose por método de pago (Nequi, Pago Móvil, Bancolombia, etc.) ── */}
+            {desglosePagosData.length > 0 && (
+              <>
+                <div className="cm-section-title">Desglose por método de pago</div>
+                <div className="cm-metodos-grid">
+                  {desglosePagosData.map((d) => (
+                    <div
+                      key={`${d.id_metodo_pago || d.codigo}-${d.codigo_moneda}`}
+                      className="cm-resumen-row"
+                    >
+                      <div className="cm-resumen-tag tag-METODO">
+                        <i className={`bi ${d.icono || 'bi-cash'}`} style={{ fontSize: '0.85rem' }}/>
+                        {d.nombre}
+                      </div>
+                      <div className="cm-resumen-cells">
+                        <div className="cm-resumen-cell">
+                          <div className="cm-resumen-cell-label">Total cobrado</div>
+                          <div className="cm-resumen-cell-val ventas">
+                            {formatCurrency(d.total, d.codigo_moneda)}
+                          </div>
+                        </div>
+                        <div className="cm-resumen-cell">
+                          <div className="cm-resumen-cell-label">Ventas</div>
+                          <div className="cm-resumen-cell-val">{d.cantidad_ventas}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
 
             {/* ── FIX: Listado de ventas del turno (colapsable) ── */}
             {ventasDelDia.length > 0 && (
