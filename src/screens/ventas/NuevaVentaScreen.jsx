@@ -6,6 +6,7 @@ import { siropesService } from "../../api/services/siropesService";
 import { ventasService } from "../../api/services/ventasService";
 import { monedasService } from "../../api/services/monedasService";
 import { clientesService } from "../../api/services/clientesService";
+import { metodosPagoService } from "../../api/services/metodosPagoService";
 import { toast } from "react-toastify";
 import { formatCurrency, formatDateTime } from "../../utils/formatters";
 import DetalleVentaModal from "../../components/ventas/DetalleVentaModal";
@@ -19,6 +20,16 @@ const COLORES_ESTADO = {
   CANCELADA: "#ef4444",
   DEVUELTA: "#8b5cf6",
 };
+
+// ✅ NUEVO: línea de pago vacía. Con una sola línea, moneda/monto se
+// autocompletan con la moneda y el total de la venta; con varias (pago
+// dividido), el usuario los edita a mano.
+const pagoVacio = (moneda, monto = "") => ({
+  id: Date.now() + Math.random(),
+  id_metodo_pago: "",
+  moneda,
+  monto,
+});
 
 const NuevaVentaScreen = () => {
   const [productos, setProductos] = useState([]);
@@ -47,6 +58,10 @@ const NuevaVentaScreen = () => {
   // Estado para el modal táctil de extras (reemplaza el select nativo expandible)
   const [extrasModal, setExtrasModal] = useState(null); // { itemId, tab: 'sabores'|'toppings'|'siropes' }
 
+  // ✅ NUEVO: métodos de pago
+  const [metodosPago, setMetodosPago] = useState([]);
+  const [pagos, setPagos] = useState([pagoVacio("COP")]);
+
   const { connected, emitirNuevaVenta } = useSocket();
 
   useEffect(() => { loadData(); }, []);
@@ -66,7 +81,7 @@ const NuevaVentaScreen = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [prodR, toppR, sabR, sirR, tasR, catR, ventR] = await Promise.all([
+      const [prodR, toppR, sabR, sirR, tasR, catR, ventR, metPagoR] = await Promise.all([
         productosService.getAll(),
         toppingsService.getAll(),
         saboresService.getAll({ disponible: "true" }),
@@ -74,11 +89,13 @@ const NuevaVentaScreen = () => {
         monedasService.getTasas(),
         productosService.getCategorias(),
         ventasService.getAll({ limit: 10 }),
+        metodosPagoService.getAll({ activo: "true" }), // ✅ NUEVO
       ]);
       setProductos(prodR.data?.data || prodR.data || []);
       setToppings(toppR.data?.data || toppR.data || []);
       setSabores(sabR.data?.data || sabR.data || []);
       setSiropes(sirR.data?.data || sirR.data || []);
+      setMetodosPago(metPagoR.data?.data || metPagoR.data || []); // ✅ NUEVO
       const monedasData = tasR.data?.data || tasR.data;
       if (Array.isArray(monedasData)) {
         setMonedas(monedasData);
@@ -198,8 +215,36 @@ const NuevaVentaScreen = () => {
   const totalUSD = carrito.reduce((tot, i) => tot + (i.precio_usd + i.toppings.reduce((a, t) => a + t.precio_usd, 0) + i.sabores.reduce((a, s) => a + s.precio_usd, 0) + i.siropes.reduce((a, s) => a + s.precio_usd, 0)) * i.cantidad, 0);
   const totalMoneda = monedaSeleccionada === "COP" ? totalCOP : monedaSeleccionada === "USD" ? totalUSD : totalUSD * (tasas["VES"] || 1);
 
+  // ✅ NUEVO: mientras solo haya una línea de pago, se sincroniza sola con la
+  // moneda y el total de la venta. Si el usuario agrega más líneas (pago
+  // dividido), deja de autocompletarse y las edita a mano.
+  useEffect(() => {
+    if (pagos.length === 1) {
+      setPagos([{ ...pagos[0], moneda: monedaSeleccionada, monto: totalMoneda ? totalMoneda.toFixed(2) : "" }]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [monedaSeleccionada, totalMoneda]);
+
+  const agregarLineaPago = () => setPagos([...pagos, pagoVacio(monedaSeleccionada)]);
+  const quitarLineaPago = (id) => setPagos(pagos.filter((p) => p.id !== id));
+  const actualizarLineaPago = (id, campo, valor) => setPagos(pagos.map((p) => (p.id === id ? { ...p, [campo]: valor } : p)));
+
+  // ✅ NUEVO: total esperado en USD y lo que suman las líneas de pago en USD
+  // (cada línea puede estar en una moneda distinta, por eso se convierte)
+  const totalVentaUSD = monedaSeleccionada === "USD" ? totalMoneda : totalMoneda / (tasas[monedaSeleccionada] || 1);
+  const totalPagosUSD = pagos.reduce((sum, p) => {
+    const monto = parseFloat(p.monto) || 0;
+    const montoUSD = p.moneda === "USD" ? monto : monto / (tasas[p.moneda] || 1);
+    return sum + montoUSD;
+  }, 0);
+  const toleranciaUSD = Math.max(1, totalVentaUSD * 0.02); // 2% o 1 USD, lo que sea mayor
+  const pagosCuadran = pagos.length === 1 ? true : Math.abs(totalPagosUSD - totalVentaUSD) <= toleranciaUSD;
+  const pagosCompletos = pagos.every((p) => p.id_metodo_pago && parseFloat(p.monto) > 0);
+
   const procesarVenta = async () => {
     if (carrito.length === 0) { toast.warning("El carrito está vacío"); return; }
+    if (!pagosCompletos) { toast.warning("Selecciona el método de pago y el monto de cada línea"); return; }
+    if (!pagosCuadran) { toast.warning("La suma de los pagos no coincide con el total de la venta"); return; }
     try {
       setProcesando(true);
       const monedaObj = monedas.find((m) => m.codigo_moneda === monedaSeleccionada);
@@ -212,7 +257,12 @@ const NuevaVentaScreen = () => {
         sabores: item.sabores.map((s) => ({ id_sabor: s.id_sabor, cantidad: item.cantidad, precio_unitario: getPrecioItem(s, "precio_cop", "precio_usd") })),
         siropes: item.siropes.map((s) => ({ id_sirope: s.id_sirope, cantidad: item.cantidad, precio_unitario: getPrecioItem(s, "precio_cop", "precio_usd") })),
       }));
-      const ventaData = { nombre_cliente: nombreCliente.trim() || null, id_cliente: clienteSeleccionado?.id_cliente || null, id_moneda: monedaObj.id_moneda, monto_total: totalMoneda, productos: detalles };
+      // ✅ NUEVO: pagos (uno o varios métodos, cada uno con su propia moneda)
+      const pagosPayload = pagos.map((p) => {
+        const monedaDelPago = monedas.find((m) => m.codigo_moneda === p.moneda);
+        return { id_metodo_pago: parseInt(p.id_metodo_pago, 10), id_moneda: monedaDelPago?.id_moneda, monto: parseFloat(p.monto) };
+      });
+      const ventaData = { nombre_cliente: nombreCliente.trim() || null, id_cliente: clienteSeleccionado?.id_cliente || null, id_moneda: monedaObj.id_moneda, monto_total: totalMoneda, productos: detalles, pagos: pagosPayload };
       const response = await ventasService.create(ventaData);
       toast.success("¡Venta procesada correctamente!");
       if (connected && response.data?.data) {
@@ -222,6 +272,7 @@ const NuevaVentaScreen = () => {
       const vc = response.data?.data;
       if (vc?.id_venta) { setVentaSeleccionada(vc.id_venta); setShowDetalleModal(true); }
       setCarrito([]); limpiarCliente(); setMontoRecibido(""); setMostrarVuelto(false); setCarritoAbierto(false); setExtrasModal(null);
+      setPagos([pagoVacio(monedaSeleccionada)]); // ✅ NUEVO: reset de pagos
       loadData();
     } catch (error) {
       toast.error(error.response?.data?.message || "Error al procesar venta");
