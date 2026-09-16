@@ -95,7 +95,19 @@ const NuevaVentaScreen = () => {
       setToppings(toppR.data?.data || toppR.data || []);
       setSabores(sabR.data?.data || sabR.data || []);
       setSiropes(sirR.data?.data || sirR.data || []);
-      setMetodosPago(metPagoR.data?.data || metPagoR.data || []); // ✅ NUEVO
+      const metodosPagoData = metPagoR.data?.data || metPagoR.data || [];
+      setMetodosPago(metodosPagoData); // ✅ NUEVO
+      if (metodosPagoData.length === 0) {
+        console.warn('⚠️ GET /api/metodos-pago no devolvió métodos. Revisa que la migración se haya corrido y que la ruta esté registrada en app.js');
+      }
+      // ✅ NUEVO: autoseleccionar EFECTIVO por defecto en la línea única de pago
+      setPagos((prev) => {
+        if (prev.length === 1 && !prev[0].id_metodo_pago) {
+          const efectivo = metodosPagoData.find((mp) => mp.codigo === 'EFECTIVO') || metodosPagoData[0];
+          if (efectivo) return [{ ...prev[0], id_metodo_pago: String(efectivo.id_metodo_pago) }];
+        }
+        return prev;
+      });
       const monedasData = tasR.data?.data || tasR.data;
       if (Array.isArray(monedasData)) {
         setMonedas(monedasData);
@@ -1675,6 +1687,75 @@ const CarritoContent = ({
             <span className="total-amount">{formatCurrency(totalMoneda, monedaSeleccionada)}</span>
           </div>
 
+          {/* ✅ NUEVO: Métodos de pago */}
+          <div className="pago-section">
+            <div className="pago-header">
+              <div className="pago-label">
+                <i className="bi bi-wallet2"></i>
+                Método{pagos.length > 1 ? "s" : ""} de pago
+              </div>
+              <button type="button" className="pago-add-btn" onClick={agregarLineaPago}>
+                <i className="bi bi-plus-circle"></i> Dividir pago
+              </button>
+            </div>
+
+            {metodosPago.length === 0 && (
+              <div className="pago-match-msg bad">
+                <i className="bi bi-exclamation-triangle"></i>
+                No se cargaron métodos de pago. Revisa que /api/metodos-pago esté registrado y la migración corrida.
+              </div>
+            )}
+
+            {pagos.map((pago) => (
+              <div key={pago.id} className="pago-row">
+                <select
+                  className="pago-select"
+                  value={pago.id_metodo_pago}
+                  onChange={(e) => actualizarLineaPago(pago.id, "id_metodo_pago", e.target.value)}
+                >
+                  <option value="">Método...</option>
+                  {metodosPago
+                    .filter((mp) => !mp.id_moneda || mp.codigo_moneda === pago.moneda)
+                    .map((mp) => (
+                      <option key={mp.id_metodo_pago} value={mp.id_metodo_pago}>{mp.nombre}</option>
+                    ))}
+                </select>
+                {pagos.length > 1 && (
+                  <select
+                    className="pago-moneda-select"
+                    value={pago.moneda}
+                    onChange={(e) => actualizarLineaPago(pago.id, "moneda", e.target.value)}
+                  >
+                    <option value="COP">COP</option>
+                    <option value="VES">VES</option>
+                    <option value="USD">USD</option>
+                  </select>
+                )}
+                <input
+                  className="pago-monto-input"
+                  type="number"
+                  step="0.01"
+                  placeholder="Monto"
+                  value={pago.monto}
+                  onChange={(e) => actualizarLineaPago(pago.id, "monto", e.target.value)}
+                  disabled={pagos.length === 1}
+                />
+                {pagos.length > 1 && (
+                  <button type="button" className="pago-remove-btn" onClick={() => quitarLineaPago(pago.id)}>
+                    <i className="bi bi-x-lg"></i>
+                  </button>
+                )}
+              </div>
+            ))}
+
+            {pagos.length > 1 && (
+              <div className={`pago-match-msg ${pagosCuadran ? "ok" : "bad"}`}>
+                <i className={`bi ${pagosCuadran ? "bi-check-circle" : "bi-exclamation-triangle"}`}></i>
+                Pagos: ≈ ${totalPagosUSD.toFixed(2)} USD / Venta: ≈ ${totalVentaUSD.toFixed(2)} USD
+              </div>
+            )}
+          </div>
+
           <div className="monto-section">
             <div className="monto-label">
               <i className="bi bi-cash-coin"></i>
@@ -1703,7 +1784,7 @@ const CarritoContent = ({
             )}
           </div>
 
-          <button className="procesar-btn" onClick={procesarVenta} disabled={procesando}>
+          <button className="procesar-btn" onClick={procesarVenta} disabled={procesando || !pagosCuadran || !pagosCompletos}>
             {procesando ? (
               <><div className="spinner-sm"></div> Procesando...</>
             ) : (
