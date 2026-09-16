@@ -15,6 +15,7 @@ import DisplayScreen from './screens/empleado/DisplayScreen';
 import FlujoCajaScreen from './screens/caja/FlujoCajaScreen';
 import ReportesScreen from './screens/reportes/ReportesScreen';
 import TasasScreen from './screens/tasas/TasasScreen';
+import MetodosPagoScreen from './screens/configuracion/MetodosPagoScreen'; // ✅ NUEVO
 
 export const router = createBrowserRouter([
   {
@@ -133,6 +134,16 @@ export const router = createBrowserRouter([
       <ProtectedRoute requireAdmin>
         <Layout>
           <TasasScreen />
+        </Layout>
+      </ProtectedRoute>
+    )
+  },
+  {
+    path: '/metodos-pago',
+    element: (
+      <ProtectedRoute requireAdmin>
+        <Layout>
+          <MetodosPagoScreen />
         </Layout>
       </ProtectedRoute>
     )
