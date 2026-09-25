@@ -8,6 +8,7 @@ import DashboardScreen from './screens/dashboard/DashboardScreen';
 import ProductosScreen from './screens/inventario/ProductosScreen';
 import ToppingsScreen from './screens/inventario/ToppingsScreen';
 import SiropesScreen from './screens/inventario/SiropesScreen';
+import SaboresScreen from './screens/sabores/SaboresScreen'; // ✅ NUEVO
 import NuevaVentaScreen from './screens/ventas/NuevaVentaScreen';
 import ListaVentasScreen from './screens/ventas/ListaVentasScreen';
 import PedidosScreen from './screens/despensador/PedidosScreen';
@@ -56,6 +57,16 @@ export const router = createBrowserRouter([
       <ProtectedRoute requireAdmin>
         <Layout>
           <ToppingsScreen />
+        </Layout>
+      </ProtectedRoute>
+    )
+  },
+  {
+    path: '/sabores',
+    element: (
+      <ProtectedRoute requireAdmin>
+        <Layout>
+          <SaboresScreen />
         </Layout>
       </ProtectedRoute>
     )
