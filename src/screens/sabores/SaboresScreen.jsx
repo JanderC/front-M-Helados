@@ -1,379 +1,429 @@
-import { useState, useEffect } from 'react';
-import { Card, Button, Table, Badge, Form, Row, Col, Modal } from 'react-bootstrap';
-import { saboresService } from '../../api/services/saboresService';
-import { toast } from 'react-toastify';
-import { formatCurrency } from '../../utils/formatters';
-import { useMoneda } from '../../context/MonedaContext';
+import { useState, useEffect } from "react";
+import { Modal, Badge } from "react-bootstrap";
+import { toast } from "react-toastify";
+import { saboresService } from "../../api/services/saboresService";
+import { formatCurrency } from "../../utils/formatters";
+
+const SABOR_VACIO = {
+  id_sabor: null,
+  nombre_sabor: "",
+  descripcion: "",
+  tiene_costo: false,
+  precio_adicional_cop: "",
+  precio_adicional_usd: "",
+};
 
 const SaboresScreen = () => {
   const [sabores, setSabores] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [saborActual, setSaborActual] = useState(null);
-  const [formData, setFormData] = useState({
-    nombre_sabor: '',
-    descripcion: '',
-    precio_adicional_cop: '0.00',
-    precio_adicional_usd: '0.00'
-  });
-  const [errors, setErrors] = useState({});
-  const [filtroDisponible, setFiltroDisponible] = useState('');
-  const { convertirPrecio } = useMoneda();
+  const [cargando, setCargando] = useState(true);
+  const [guardando, setGuardando] = useState(false);
+  const [modalAbierto, setModalAbierto] = useState(false);
+  const [form, setForm] = useState(SABOR_VACIO);
+  const [busqueda, setBusqueda] = useState("");
 
   useEffect(() => {
-    loadSabores();
-  }, [filtroDisponible]);
+    cargarSabores();
+  }, []);
 
-  const loadSabores = async () => {
+  const cargarSabores = async () => {
     try {
-      setLoading(true);
-      const params = {};
-      if (filtroDisponible !== '') {
-        params.disponible = filtroDisponible;
-      }
-      const response = await saboresService.getAll(params);
-      setSabores(response.data?.data || response.data || []);
+      setCargando(true);
+      const resp = await saboresService.getAll();
+      setSabores(resp.data?.data || resp.data || []);
     } catch (error) {
-      console.error('Error al cargar sabores:', error);
-      toast.error('Error al cargar sabores');
+      console.error("Error al cargar sabores:", error);
+      toast.error("No se pudieron cargar los sabores");
     } finally {
-      setLoading(false);
+      setCargando(false);
     }
   };
 
-  const handleShowModal = (sabor = null) => {
-    if (sabor) {
-      setSaborActual(sabor);
-      setFormData({
-        nombre_sabor: sabor.nombre_sabor,
-        descripcion: sabor.descripcion || '',
-        precio_adicional_cop: sabor.precio_adicional_cop || '0.00',
-        precio_adicional_usd: sabor.precio_adicional_usd || '0.00'
-      });
-    } else {
-      setSaborActual(null);
-      setFormData({
-        nombre_sabor: '',
-        descripcion: '',
-        precio_adicional_cop: '0.00',
-        precio_adicional_usd: '0.00'
-      });
-    }
-    setErrors({});
-    setShowModal(true);
+  const abrirNuevo = () => {
+    setForm(SABOR_VACIO);
+    setModalAbierto(true);
   };
 
-  const handleCloseModal = () => {
-    setShowModal(false);
-    setSaborActual(null);
-    setFormData({
-      nombre_sabor: '',
-      descripcion: '',
-      precio_adicional_cop: '0.00',
-      precio_adicional_usd: '0.00'
+  const abrirEditar = (sabor) => {
+    const tieneCosto =
+      parseFloat(sabor.precio_adicional_cop || 0) > 0 ||
+      parseFloat(sabor.precio_adicional_usd || 0) > 0;
+    setForm({
+      id_sabor: sabor.id_sabor,
+      nombre_sabor: sabor.nombre_sabor || "",
+      descripcion: sabor.descripcion || "",
+      tiene_costo: tieneCosto,
+      precio_adicional_cop: tieneCosto ? sabor.precio_adicional_cop ?? "" : "",
+      precio_adicional_usd: tieneCosto ? sabor.precio_adicional_usd ?? "" : "",
     });
-    setErrors({});
+    setModalAbierto(true);
   };
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData({ ...formData, [name]: value });
-    if (errors[name]) {
-      setErrors({ ...errors, [name]: null });
-    }
+  const cerrarModal = () => {
+    if (guardando) return;
+    setModalAbierto(false);
   };
 
-  const validate = () => {
-    const newErrors = {};
-
-    if (!formData.nombre_sabor.trim()) {
-      newErrors.nombre_sabor = 'El nombre es requerido';
-    }
-
-    if (!formData.precio_adicional_cop || parseFloat(formData.precio_adicional_cop) < 0) {
-      newErrors.precio_adicional_cop = 'El precio en COP no puede ser negativo';
-    }
-
-    if (!formData.precio_adicional_usd || parseFloat(formData.precio_adicional_usd) < 0) {
-      newErrors.precio_adicional_usd = 'El precio en USD no puede ser negativo';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-
-    if (!validate()) {
+  const guardarSabor = async () => {
+    if (!form.nombre_sabor.trim()) {
+      toast.warning("El nombre del sabor es requerido");
       return;
     }
 
-    try {
-      const data = {
-        nombre_sabor: formData.nombre_sabor.trim(),
-        descripcion: formData.descripcion.trim() || null,
-        precio_adicional_cop: parseFloat(formData.precio_adicional_cop),
-        precio_adicional_usd: parseFloat(formData.precio_adicional_usd)
-      };
+    const payload = {
+      nombre_sabor: form.nombre_sabor.trim(),
+      descripcion: form.descripcion.trim() || null,
+      // Si el sabor no tiene costo adicional, se guarda en 0 (se muestra "Gratis")
+      precio_adicional_cop: form.tiene_costo ? parseFloat(form.precio_adicional_cop || 0) : 0,
+      precio_adicional_usd: form.tiene_costo ? parseFloat(form.precio_adicional_usd || 0) : 0,
+    };
 
-      if (saborActual) {
-        await saboresService.update(saborActual.id_sabor, data);
-        toast.success('Sabor actualizado correctamente');
+    try {
+      setGuardando(true);
+      if (form.id_sabor) {
+        await saboresService.update(form.id_sabor, payload);
+        toast.success("Sabor actualizado correctamente");
       } else {
-        await saboresService.create(data);
-        toast.success('Sabor creado correctamente');
+        await saboresService.create(payload);
+        toast.success("Sabor creado correctamente");
       }
-
-      handleCloseModal();
-      loadSabores();
+      setModalAbierto(false);
+      cargarSabores();
     } catch (error) {
-      console.error('Error al guardar sabor:', error);
-      toast.error(error.response?.data?.message || 'Error al guardar sabor');
+      console.error("Error al guardar sabor:", error);
+      toast.error(error.response?.data?.message || "Error al guardar el sabor");
+    } finally {
+      setGuardando(false);
     }
   };
 
-  const handleToggleDisponible = async (sabor) => {
+  const toggleDisponible = async (sabor) => {
     try {
-      await saboresService.update(sabor.id_sabor, {
-        disponible: !sabor.disponible
-      });
-      toast.success('Estado actualizado correctamente');
-      loadSabores();
+      await saboresService.update(sabor.id_sabor, { disponible: !sabor.disponible });
+      setSabores((prev) =>
+        prev.map((s) =>
+          s.id_sabor === sabor.id_sabor ? { ...s, disponible: !s.disponible } : s
+        )
+      );
     } catch (error) {
-      console.error('Error al actualizar estado:', error);
-      toast.error('Error al actualizar estado');
+      console.error("Error al cambiar disponibilidad:", error);
+      toast.error("No se pudo actualizar la disponibilidad");
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('¿Estás seguro de eliminar este sabor?')) {
-      return;
-    }
-
+  const eliminarSabor = async (sabor) => {
+    if (!window.confirm(`¿Eliminar el sabor "${sabor.nombre_sabor}"?`)) return;
     try {
-      await saboresService.delete(id);
-      toast.success('Sabor eliminado correctamente');
-      loadSabores();
+      await saboresService.delete(sabor.id_sabor);
+      toast.success("Sabor eliminado");
+      setSabores((prev) => prev.filter((s) => s.id_sabor !== sabor.id_sabor));
     } catch (error) {
-      console.error('Error al eliminar sabor:', error);
-      toast.error('Error al eliminar sabor');
+      console.error("Error al eliminar sabor:", error);
+      toast.error(error.response?.data?.message || "No se pudo eliminar el sabor");
     }
   };
+
+  const saboresFiltrados = sabores.filter((s) =>
+    s.nombre_sabor?.toLowerCase().includes(busqueda.toLowerCase())
+  );
 
   return (
-    <div>
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <h2 className="fw-bold">
-          <i className="bi bi-ice-cream me-2 text-primary"></i>
-          Gestión de Sabores
-        </h2>
-        <Button variant="primary" onClick={() => handleShowModal()}>
-          <i className="bi bi-plus-circle me-2"></i>
-          Nuevo Sabor
-        </Button>
+    <div className="sabores-screen">
+      <style>{`
+        .sabores-screen { font-family: 'DM Sans', sans-serif; }
+        .sabores-header {
+          background: linear-gradient(135deg, #5E1F96 0%, #7B2FBE 100%);
+          border-radius: 16px;
+          padding: 20px 24px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          flex-wrap: wrap;
+          gap: 12px;
+          margin-bottom: 20px;
+          box-shadow: 0 8px 24px rgba(94,31,150,0.18);
+        }
+        .sabores-title {
+          font-family: 'Syne', sans-serif;
+          font-weight: 800;
+          color: #fff;
+          font-size: 1.4rem;
+          margin: 0;
+        }
+        .sabores-subtitle {
+          color: rgba(255,255,255,0.75);
+          font-size: 0.85rem;
+          margin: 2px 0 0;
+        }
+        .btn-nuevo-sabor {
+          background: linear-gradient(135deg, #7DE8D8, #4DCFBD);
+          color: #1a0a2e;
+          border: none;
+          border-radius: 10px;
+          padding: 10px 18px;
+          font-weight: 700;
+          font-size: 0.9rem;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          transition: transform 0.15s ease;
+        }
+        .btn-nuevo-sabor:hover { transform: translateY(-1px); }
+
+        .sabores-toolbar { margin-bottom: 16px; }
+        .sabores-search {
+          border: 1px solid rgba(123,47,190,0.2);
+          border-radius: 10px;
+          padding: 9px 14px;
+          font-size: 0.9rem;
+          width: 100%;
+          max-width: 320px;
+        }
+        .sabores-search:focus { outline: none; border-color: #7B2FBE; }
+
+        .sabores-table-wrap {
+          background: #fff;
+          border-radius: 14px;
+          border: 1px solid rgba(123,47,190,0.1);
+          overflow: hidden;
+        }
+        table.sabores-table { width: 100%; border-collapse: collapse; }
+        .sabores-table th {
+          background: #f5f0fb;
+          color: #5E1F96;
+          font-size: 0.72rem;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+          font-weight: 700;
+          padding: 12px 16px;
+          text-align: left;
+        }
+        .sabores-table td {
+          padding: 12px 16px;
+          border-top: 1px solid rgba(123,47,190,0.08);
+          font-size: 0.9rem;
+          color: #3a2a52;
+          vertical-align: middle;
+        }
+        .sabores-table tr:hover td { background: rgba(123,47,190,0.03); }
+
+        .precio-pill {
+          font-weight: 700;
+          font-size: 0.8rem;
+          padding: 3px 10px;
+          border-radius: 999px;
+          background: rgba(123,47,190,0.08);
+          color: #5E1F96;
+        }
+        .precio-pill.gratis { background: rgba(16,185,129,0.1); color: #10b981; }
+
+        .disp-switch {
+          border: none;
+          background: none;
+          font-size: 1.6rem;
+          line-height: 1;
+          cursor: pointer;
+          color: #c9bcdc;
+        }
+        .disp-switch.on { color: #4DCFBD; }
+
+        .action-btn {
+          border: none;
+          background: none;
+          font-size: 1.05rem;
+          padding: 4px 8px;
+          border-radius: 8px;
+          color: #7B2FBE;
+        }
+        .action-btn:hover { background: rgba(123,47,190,0.08); }
+        .action-btn.danger { color: #ef4444; }
+        .action-btn.danger:hover { background: rgba(239,68,68,0.08); }
+
+        .form-label-sm {
+          font-size: 0.78rem;
+          font-weight: 700;
+          color: #5a4a72;
+          margin-bottom: 4px;
+          display: block;
+        }
+        .form-control-sm2 {
+          width: 100%;
+          border: 1px solid rgba(123,47,190,0.2);
+          border-radius: 8px;
+          padding: 8px 12px;
+          font-size: 0.9rem;
+          margin-bottom: 14px;
+        }
+        .form-control-sm2:focus { outline: none; border-color: #7B2FBE; }
+      `}</style>
+
+      <div className="sabores-header">
+        <div>
+          <p className="sabores-title">🍓 Sabores</p>
+          <p className="sabores-subtitle">
+            Gestiona los sabores disponibles para la venta. Cada uno puede ser
+            gratis o tener un costo adicional.
+          </p>
+        </div>
+        <button className="btn-nuevo-sabor" onClick={abrirNuevo}>
+          <i className="bi bi-plus-lg" /> Nuevo sabor
+        </button>
       </div>
 
-      <Card className="border-0 shadow-sm">
-        <Card.Body>
-          <Row className="mb-3">
-            <Col md={4}>
-              <Form.Select
-                value={filtroDisponible}
-                onChange={(e) => setFiltroDisponible(e.target.value)}
-              >
-                <option value="">Todos los sabores</option>
-                <option value="true">Solo disponibles</option>
-                <option value="false">Solo no disponibles</option>
-              </Form.Select>
-            </Col>
-            <Col md={8} className="text-end">
-              <Badge bg="secondary">{sabores.length} sabores encontrados</Badge>
-            </Col>
-          </Row>
+      <div className="sabores-toolbar">
+        <input
+          className="sabores-search"
+          placeholder="Buscar sabor..."
+          value={busqueda}
+          onChange={(e) => setBusqueda(e.target.value)}
+        />
+      </div>
 
-          <div className="table-responsive">
-            <Table hover>
-              <thead className="table-light">
-                <tr>
-                  <th>Nombre</th>
-                  <th>Descripción</th>
-                  <th>Precio Adicional</th>
-                  <th>Estado</th>
-                  <th className="text-end">Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan="5" className="text-center py-4">
-                      <div className="spinner-border spinner-border-sm text-primary me-2" />
-                      Cargando sabores...
+      <div className="sabores-table-wrap">
+        {cargando ? (
+          <div className="p-4 text-center text-muted">Cargando sabores...</div>
+        ) : saboresFiltrados.length === 0 ? (
+          <div className="p-4 text-center text-muted">No hay sabores registrados</div>
+        ) : (
+          <table className="sabores-table">
+            <thead>
+              <tr>
+                <th>Sabor</th>
+                <th>Descripción</th>
+                <th>Precio COP</th>
+                <th>Precio USD</th>
+                <th>Disponible</th>
+                <th style={{ textAlign: "right" }}>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {saboresFiltrados.map((sabor) => {
+                const precioCOP = parseFloat(sabor.precio_adicional_cop || 0);
+                const precioUSD = parseFloat(sabor.precio_adicional_usd || 0);
+                const tieneCosto = precioCOP > 0 || precioUSD > 0;
+                return (
+                  <tr key={sabor.id_sabor}>
+                    <td style={{ fontWeight: 600 }}>{sabor.nombre_sabor}</td>
+                    <td className="text-muted">{sabor.descripcion || "—"}</td>
+                    <td>
+                      <span className={`precio-pill ${tieneCosto ? "" : "gratis"}`}>
+                        {tieneCosto ? formatCurrency(precioCOP, "COP") : "Gratis"}
+                      </span>
+                    </td>
+                    <td>
+                      {tieneCosto ? (
+                        <span className="precio-pill">{formatCurrency(precioUSD, "USD")}</span>
+                      ) : (
+                        <span className="text-muted">—</span>
+                      )}
+                    </td>
+                    <td>
+                      <button
+                        className={`disp-switch ${sabor.disponible ? "on" : ""}`}
+                        onClick={() => toggleDisponible(sabor)}
+                        title={sabor.disponible ? "Disponible" : "No disponible"}
+                      >
+                        <i className={`bi ${sabor.disponible ? "bi-toggle-on" : "bi-toggle-off"}`} />
+                      </button>
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <button className="action-btn" onClick={() => abrirEditar(sabor)} title="Editar">
+                        <i className="bi bi-pencil" />
+                      </button>
+                      <button
+                        className="action-btn danger"
+                        onClick={() => eliminarSabor(sabor)}
+                        title="Eliminar"
+                      >
+                        <i className="bi bi-trash" />
+                      </button>
                     </td>
                   </tr>
-                ) : sabores.length === 0 ? (
-                  <tr>
-                    <td colSpan="5" className="text-center text-muted py-4">
-                      <i className="bi bi-inbox" style={{ fontSize: '2rem', display: 'block', marginBottom: '0.5rem' }}></i>
-                      No hay sabores registrados
-                    </td>
-                  </tr>
-                ) : (
-                  sabores.map((sabor) => {
-                    const precioConvertido = convertirPrecio(
-                      sabor.precio_adicional_cop,
-                      sabor.precio_adicional_usd
-                    );
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
 
-                    return (
-                      <tr key={sabor.id_sabor}>
-                        <td>
-                          <strong>{sabor.nombre_sabor}</strong>
-                        </td>
-                        <td>
-                          <small className="text-muted">
-                            {sabor.descripcion || 'Sin descripción'}
-                          </small>
-                        </td>
-                        <td>
-                          <Badge bg="secondary">
-                            {formatCurrency(precioConvertido.monto, precioConvertido.moneda)}
-                          </Badge>
-                        </td>
-                        <td>
-                          <Form.Check
-                            type="switch"
-                            checked={sabor.disponible}
-                            onChange={() => handleToggleDisponible(sabor)}
-                            label={sabor.disponible ? 'Disponible' : 'No disponible'}
-                          />
-                        </td>
-                        <td className="text-end">
-                          <Button
-                            variant="outline-primary"
-                            size="sm"
-                            className="me-2"
-                            onClick={() => handleShowModal(sabor)}
-                            title="Editar"
-                          >
-                            <i className="bi bi-pencil"></i>
-                          </Button>
-                          <Button
-                            variant="outline-danger"
-                            size="sm"
-                            onClick={() => handleDelete(sabor.id_sabor)}
-                            title="Eliminar"
-                          >
-                            <i className="bi bi-trash"></i>
-                          </Button>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </Table>
-          </div>
-        </Card.Body>
-      </Card>
-
-      {/* Modal de Formulario */}
-      <Modal show={showModal} onHide={handleCloseModal} centered size="lg">
+      <Modal show={modalAbierto} onHide={cerrarModal} centered>
         <Modal.Header closeButton>
-          <Modal.Title>
-            <i className="bi bi-ice-cream me-2"></i>
-            {saborActual ? 'Editar Sabor' : 'Nuevo Sabor'}
+          <Modal.Title style={{ fontFamily: "'Syne', sans-serif", fontSize: "1.1rem" }}>
+            {form.id_sabor ? "Editar sabor" : "Nuevo sabor"}
           </Modal.Title>
         </Modal.Header>
-        <Form onSubmit={handleSubmit}>
-          <Modal.Body>
-            <Form.Group className="mb-3">
-              <Form.Label>Nombre del Sabor *</Form.Label>
-              <Form.Control
-                type="text"
-                name="nombre_sabor"
-                value={formData.nombre_sabor}
-                onChange={handleChange}
-                placeholder="Ej: Vainilla Francesa"
-                isInvalid={!!errors.nombre_sabor}
-              />
-              <Form.Control.Feedback type="invalid">
-                {errors.nombre_sabor}
-              </Form.Control.Feedback>
-            </Form.Group>
+        <Modal.Body>
+          <label className="form-label-sm">Nombre del sabor *</label>
+          <input
+            className="form-control-sm2"
+            value={form.nombre_sabor}
+            onChange={(e) => setForm({ ...form, nombre_sabor: e.target.value })}
+            placeholder="Ej: Chocolate, Fresa, Ron con pasas..."
+          />
 
-            <Form.Group className="mb-3">
-              <Form.Label>Descripción</Form.Label>
-              <Form.Control
-                as="textarea"
-                rows={2}
-                name="descripcion"
-                value={formData.descripcion}
-                onChange={handleChange}
-                placeholder="Descripción del sabor..."
-              />
-            </Form.Group>
+          <label className="form-label-sm">Descripción (opcional)</label>
+          <input
+            className="form-control-sm2"
+            value={form.descripcion}
+            onChange={(e) => setForm({ ...form, descripcion: e.target.value })}
+            placeholder="Detalle breve del sabor"
+          />
 
-            {/* Precios */}
-            <div className="border rounded p-3 mb-3 bg-light">
-              <h6 className="mb-3">
-                <i className="bi bi-cash-stack me-2"></i>
-                Precios Adicionales
-              </h6>
-              <Row>
-                <Col md={6}>
-                  <Form.Group className="mb-3">
-                    <Form.Label>Precio en Pesos (COP) *</Form.Label>
-                    <Form.Control
-                      type="number"
-                      step="0.01"
-                      name="precio_adicional_cop"
-                      value={formData.precio_adicional_cop}
-                      onChange={handleChange}
-                      placeholder="0.00"
-                      isInvalid={!!errors.precio_adicional_cop}
-                    />
-                    <Form.Text className="text-muted">
-                      Costo extra en pesos colombianos (0 si no aplica)
-                    </Form.Text>
-                    <Form.Control.Feedback type="invalid">
-                      {errors.precio_adicional_cop}
-                    </Form.Control.Feedback>
-                  </Form.Group>
-                </Col>
+          <div className="form-check mb-3">
+            <input
+              className="form-check-input"
+              type="checkbox"
+              id="tiene-costo"
+              checked={form.tiene_costo}
+              onChange={(e) => setForm({ ...form, tiene_costo: e.target.checked })}
+            />
+            <label className="form-check-label" htmlFor="tiene-costo" style={{ fontSize: "0.88rem" }}>
+              Este sabor tiene un costo adicional
+            </label>
+          </div>
 
-                <Col md={6}>
-                  <Form.Group className="mb-3">
-                    <Form.Label>Precio Referencia (USD) *</Form.Label>
-                    <Form.Control
-                      type="number"
-                      step="0.01"
-                      name="precio_adicional_usd"
-                      value={formData.precio_adicional_usd}
-                      onChange={handleChange}
-                      placeholder="0.00"
-                      isInvalid={!!errors.precio_adicional_usd}
-                    />
-                    <Form.Text className="text-muted">
-                      Usado para conversión a bolívares
-                    </Form.Text>
-                    <Form.Control.Feedback type="invalid">
-                      {errors.precio_adicional_usd}
-                    </Form.Control.Feedback>
-                  </Form.Group>
-                </Col>
-              </Row>
+          {form.tiene_costo && (
+            <div className="row">
+              <div className="col-6">
+                <label className="form-label-sm">Precio adicional (COP)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="form-control-sm2"
+                  value={form.precio_adicional_cop}
+                  onChange={(e) => setForm({ ...form, precio_adicional_cop: e.target.value })}
+                  placeholder="0.00"
+                />
+              </div>
+              <div className="col-6">
+                <label className="form-label-sm">Precio adicional (USD)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="form-control-sm2"
+                  value={form.precio_adicional_usd}
+                  onChange={(e) => setForm({ ...form, precio_adicional_usd: e.target.value })}
+                  placeholder="0.00"
+                />
+              </div>
             </div>
-          </Modal.Body>
-          <Modal.Footer>
-            <Button variant="secondary" onClick={handleCloseModal}>
-              Cancelar
-            </Button>
-            <Button variant="primary" type="submit">
-              {saborActual ? 'Actualizar' : 'Crear'}
-            </Button>
-          </Modal.Footer>
-        </Form>
+          )}
+
+          {!form.tiene_costo && (
+            <Badge bg="light" text="dark" style={{ fontWeight: 500 }}>
+              Este sabor se mostrará como "Gratis" al armar la venta
+            </Badge>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <button className="btn btn-outline-secondary" onClick={cerrarModal} disabled={guardando}>
+            Cancelar
+          </button>
+          <button className="btn-nuevo-sabor" onClick={guardarSabor} disabled={guardando}>
+            {guardando ? "Guardando..." : "Guardar"}
+          </button>
+        </Modal.Footer>
       </Modal>
     </div>
   );

@@ -39,6 +39,7 @@ export const CATEGORIAS = [
 export const RUTAS_ADMIN = [
   { path: '/dashboard', name: 'Dashboard', icon: 'bi-speedometer2' },
   { path: '/productos', name: 'Productos', icon: 'bi-box-seam' },
+  { path: '/sabores', name: 'Sabores', icon: 'bi-palette2' }, // NUEVO
   { path: '/toppings', name: 'Toppings', icon: 'bi-stars' },
   { path: '/siropes', name: 'Siropes', icon: 'bi-droplet-half' }, // NUEVO
   { path: '/ventas', name: 'Nueva Venta', icon: 'bi-cart-plus' },
