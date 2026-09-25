@@ -93,7 +93,6 @@ const NuevaVentaScreen = () => {
       ]);
       setProductos(prodR.data?.data || prodR.data || []);
       setToppings(toppR.data?.data || toppR.data || []);
-      setSabores(sabR.data?.data || sabR.data || []);
       setSiropes(sirR.data?.data || sirR.data || []);
       const metodosPagoData = metPagoR.data?.data || metPagoR.data || [];
       setMetodosPago(metodosPagoData); // ✅ NUEVO
@@ -109,14 +108,31 @@ const NuevaVentaScreen = () => {
         return prev;
       });
       const monedasData = tasR.data?.data || tasR.data;
+      let tasasCalc = { USD: 1, VES: 36, COP: 4000 };
       if (Array.isArray(monedasData)) {
         setMonedas(monedasData);
         const t = {};
         monedasData.forEach((m) => { t[m.codigo_moneda] = parseFloat(m.tasa_cambio_usd); });
+        tasasCalc = t;
         setTasas(t);
       } else {
-        setTasas(monedasData || { USD: 1, VES: 36, COP: 4000 });
+        tasasCalc = monedasData || tasasCalc;
+        setTasas(tasasCalc);
       }
+      // 🔥 Sabores: a diferencia de toppings/siropes, el precio en USD es opcional
+      // al crear el sabor. Si quedó en 0 pero sí tiene precio en COP, se deriva
+      // con la tasa vigente para que también se sume correctamente al pasar a
+      // bolívares (la conversión a VES se calcula siempre a partir del USD).
+      const sabRaw = sabR.data?.data || sabR.data || [];
+      const sabConUSD = sabRaw.map((s) => {
+        const cop = parseFloat(s.precio_adicional_cop ?? s.precio_adicional ?? 0);
+        let usd = parseFloat(s.precio_adicional_usd || 0);
+        if (usd === 0 && cop > 0 && tasasCalc.COP) {
+          usd = cop / tasasCalc.COP;
+        }
+        return { ...s, precio_adicional_usd: usd };
+      });
+      setSabores(sabConUSD);
       setCategorias(catR.data?.data || catR.data || []);
       setVentasRecientes(ventR.data?.data || ventR.data || []);
     } catch (e) {

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Modal, Badge } from "react-bootstrap";
 import { toast } from "react-toastify";
 import { saboresService } from "../../api/services/saboresService";
+import { monedasService } from "../../api/services/monedasService";
 import { formatCurrency } from "../../utils/formatters";
 
 const SABOR_VACIO = {
@@ -20,10 +21,23 @@ const SaboresScreen = () => {
   const [modalAbierto, setModalAbierto] = useState(false);
   const [form, setForm] = useState(SABOR_VACIO);
   const [busqueda, setBusqueda] = useState("");
+  const [tasaCOP, setTasaCOP] = useState(null); // COP por 1 USD, para derivar precios
 
   useEffect(() => {
     cargarSabores();
+    cargarTasa();
   }, []);
+
+  const cargarTasa = async () => {
+    try {
+      const resp = await monedasService.getTasas();
+      const monedas = resp.data?.data || resp.data || [];
+      const cop = Array.isArray(monedas) ? monedas.find((m) => m.codigo_moneda === "COP") : null;
+      if (cop) setTasaCOP(parseFloat(cop.tasa_cambio_usd));
+    } catch (error) {
+      console.error("Error al cargar tasas:", error);
+    }
+  };
 
   const cargarSabores = async () => {
     try {
@@ -69,12 +83,22 @@ const SaboresScreen = () => {
       return;
     }
 
+    const precioCOP = form.tiene_costo ? parseFloat(form.precio_adicional_cop || 0) : 0;
+    let precioUSD = form.tiene_costo ? parseFloat(form.precio_adicional_usd || 0) : 0;
+
+    // 🔥 Si tiene costo y no cargaron el equivalente en USD, se deriva con la
+    // tasa vigente. Sin esto, el precio no se sumaba al pasar la venta a
+    // bolívares (esa conversión siempre se calcula a partir del USD).
+    if (form.tiene_costo && precioUSD === 0 && precioCOP > 0 && tasaCOP) {
+      precioUSD = precioCOP / tasaCOP;
+    }
+
     const payload = {
       nombre_sabor: form.nombre_sabor.trim(),
       descripcion: form.descripcion.trim() || null,
       // Si el sabor no tiene costo adicional, se guarda en 0 (se muestra "Gratis")
-      precio_adicional_cop: form.tiene_costo ? parseFloat(form.precio_adicional_cop || 0) : 0,
-      precio_adicional_usd: form.tiene_costo ? parseFloat(form.precio_adicional_usd || 0) : 0,
+      precio_adicional_cop: precioCOP,
+      precio_adicional_usd: precioUSD,
     };
 
     try {
@@ -404,7 +428,11 @@ const SaboresScreen = () => {
                   className="form-control-sm2"
                   value={form.precio_adicional_usd}
                   onChange={(e) => setForm({ ...form, precio_adicional_usd: e.target.value })}
-                  placeholder="0.00"
+                  placeholder={
+                    tasaCOP && form.precio_adicional_cop
+                      ? `Auto: ${(parseFloat(form.precio_adicional_cop || 0) / tasaCOP).toFixed(2)}`
+                      : "0.00"
+                  }
                 />
               </div>
             </div>
