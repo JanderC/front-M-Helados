@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { productosService } from "../../api/services/productosService";
 import { toppingsService } from "../../api/services/toppingsService";
 import { saboresService } from "../../api/services/saboresService";
@@ -23,7 +23,7 @@ const COLORES_ESTADO = {
 
 // ✅ NUEVO: línea de pago vacía. Con una sola línea, moneda/monto se
 // autocompletan con la moneda y el total de la venta; con varias (pago
-// dividido), el usuario los edita a mano.
+// dividido), el usuario escribe un monto y el resto se calcula solo.
 const pagoVacio = (moneda, monto = "") => ({
   id: Date.now() + Math.random(),
   id_metodo_pago: "",
@@ -61,6 +61,7 @@ const NuevaVentaScreen = () => {
   // ✅ NUEVO: métodos de pago
   const [metodosPago, setMetodosPago] = useState([]);
   const [pagos, setPagos] = useState([pagoVacio("COP")]);
+  const ultimaLineaEditada = useRef(null); // línea de pago cuyo monto escribió el usuario
 
   const { connected, emitirNuevaVenta } = useSocket();
 
@@ -243,28 +244,60 @@ const NuevaVentaScreen = () => {
   const totalUSD = carrito.reduce((tot, i) => tot + (i.precio_usd + i.toppings.reduce((a, t) => a + t.precio_usd, 0) + i.sabores.reduce((a, s) => a + s.precio_usd, 0) + i.siropes.reduce((a, s) => a + s.precio_usd, 0)) * i.cantidad, 0);
   const totalMoneda = monedaSeleccionada === "COP" ? totalCOP : monedaSeleccionada === "USD" ? totalUSD : totalUSD * (tasas["VES"] || 1);
 
-  // ✅ NUEVO: mientras solo haya una línea de pago, se sincroniza sola con la
-  // moneda y el total de la venta. Si el usuario agrega más líneas (pago
-  // dividido), deja de autocompletarse y las edita a mano.
+  // ✅ NUEVO: total esperado en USD (cada línea de pago puede estar en una
+  // moneda distinta, por eso todo se compara convertido a USD)
+  const totalVentaUSD = monedaSeleccionada === "USD" ? totalMoneda : totalMoneda / (tasas[monedaSeleccionada] || 1);
+  const aUSD = (monto, moneda) => (moneda === "USD" ? monto : monto / (tasas[moneda] || 1));
+  const desdeUSD = (montoUSD, moneda) => (moneda === "USD" ? montoUSD : montoUSD * (tasas[moneda] || 1));
+
+  // Pago dividido: la línea "resto" se calcula sola con lo que falta por
+  // pagar, convertido a su moneda. Es la última línea que el usuario no
+  // acaba de escribir (ej. total 4.500 COP, escribe 2.000 COP → el resto
+  // sale en Bs; si escribe los Bs, el resto sale en pesos).
+  const repartirResto = (lista) => {
+    if (lista.length < 2) return lista;
+    const resto = [...lista].reverse().find((p) => p.id !== ultimaLineaEditada.current);
+    const pagadoUSD = lista
+      .filter((p) => p.id !== resto.id)
+      .reduce((sum, p) => sum + aUSD(parseFloat(p.monto) || 0, p.moneda), 0);
+    const faltante = desdeUSD(Math.max(0, totalVentaUSD - pagadoUSD), resto.moneda);
+    // Los pesos no usan centavos
+    const monto = resto.moneda === "COP" ? Math.round(faltante) : Math.round(faltante * 100) / 100;
+    return lista.map((p) => (p.id === resto.id ? { ...p, monto: monto > 0 ? String(monto) : "" } : p));
+  };
+
+  // Con una sola línea de pago, se sincroniza sola con la moneda y el total
+  // de la venta. Con pago dividido, se recalcula el resto.
   useEffect(() => {
     if (pagos.length === 1) {
       setPagos([{ ...pagos[0], moneda: monedaSeleccionada, monto: totalMoneda ? totalMoneda.toFixed(2) : "" }]);
+    } else {
+      setPagos(repartirResto(pagos));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [monedaSeleccionada, totalMoneda]);
 
-  const agregarLineaPago = () => setPagos([...pagos, pagoVacio(monedaSeleccionada)]);
-  const quitarLineaPago = (id) => setPagos(pagos.filter((p) => p.id !== id));
-  const actualizarLineaPago = (id, campo, valor) => setPagos(pagos.map((p) => (p.id === id ? { ...p, [campo]: valor } : p)));
+  const agregarLineaPago = () => {
+    // Al dividir, la primera línea es la que el usuario va a ajustar
+    if (pagos.length === 1) ultimaLineaEditada.current = pagos[0].id;
+    setPagos(repartirResto([...pagos, pagoVacio(monedaSeleccionada)]));
+  };
+  const quitarLineaPago = (id) => {
+    const restantes = pagos.filter((p) => p.id !== id);
+    if (restantes.length === 1) {
+      ultimaLineaEditada.current = null;
+      setPagos([{ ...restantes[0], moneda: monedaSeleccionada, monto: totalMoneda ? totalMoneda.toFixed(2) : "" }]);
+      return;
+    }
+    setPagos(repartirResto(restantes));
+  };
+  const actualizarLineaPago = (id, campo, valor) => {
+    if (campo === "monto") ultimaLineaEditada.current = id;
+    const lista = pagos.map((p) => (p.id === id ? { ...p, [campo]: valor } : p));
+    setPagos(campo === "id_metodo_pago" ? lista : repartirResto(lista));
+  };
 
-  // ✅ NUEVO: total esperado en USD y lo que suman las líneas de pago en USD
-  // (cada línea puede estar en una moneda distinta, por eso se convierte)
-  const totalVentaUSD = monedaSeleccionada === "USD" ? totalMoneda : totalMoneda / (tasas[monedaSeleccionada] || 1);
-  const totalPagosUSD = pagos.reduce((sum, p) => {
-    const monto = parseFloat(p.monto) || 0;
-    const montoUSD = p.moneda === "USD" ? monto : monto / (tasas[p.moneda] || 1);
-    return sum + montoUSD;
-  }, 0);
+  const totalPagosUSD = pagos.reduce((sum, p) => sum + aUSD(parseFloat(p.monto) || 0, p.moneda), 0);
   const toleranciaUSD = Math.max(1, totalVentaUSD * 0.02); // 2% o 1 USD, lo que sea mayor
   const pagosCuadran = pagos.length === 1 ? true : Math.abs(totalPagosUSD - totalVentaUSD) <= toleranciaUSD;
   const pagosCompletos = pagos.every((p) => p.id_metodo_pago && parseFloat(p.monto) > 0);
@@ -300,6 +333,7 @@ const NuevaVentaScreen = () => {
       const vc = response.data?.data;
       if (vc?.id_venta) { setVentaSeleccionada(vc.id_venta); setShowDetalleModal(true); }
       setCarrito([]); limpiarCliente(); setMontoRecibido(""); setMostrarVuelto(false); setCarritoAbierto(false); setExtrasModal(null);
+      ultimaLineaEditada.current = null;
       setPagos([pagoVacio(monedaSeleccionada)]); // ✅ NUEVO: reset de pagos
       loadData();
     } catch (error) {
@@ -1091,6 +1125,7 @@ const NuevaVentaScreen = () => {
         }
         .pago-match-msg.ok { color: #10b981; }
         .pago-match-msg.bad { color: #ef4444; }
+        .pago-hint { font-size: 0.72rem; color: #94a3b8; margin-top: 4px; }
 
         /* FAB móvil */
         .carrito-fab {
@@ -1768,6 +1803,11 @@ const CarritoContent = ({
               <div className={`pago-match-msg ${pagosCuadran ? "ok" : "bad"}`}>
                 <i className={`bi ${pagosCuadran ? "bi-check-circle" : "bi-exclamation-triangle"}`}></i>
                 Pagos: ≈ ${totalPagosUSD.toFixed(2)} USD / Venta: ≈ ${totalVentaUSD.toFixed(2)} USD
+              </div>
+            )}
+            {pagos.length > 1 && (
+              <div className="pago-hint">
+                <i className="bi bi-magic"></i> Escribe un monto y el resto se calcula solo en la otra moneda.
               </div>
             )}
           </div>
