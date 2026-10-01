@@ -143,12 +143,16 @@ const StockBadge = ({ nivel }) => {
 /* ════════════════════════════════════════════════════
    PANTALLA PRINCIPAL
 ═══════════════════════════════════════════════════ */
+// Fecha 'YYYY-MM-DD' en hora local (toISOString da el día UTC y de noche se adelanta)
+const fechaLocal = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
 const ReportesScreen = () => {
   const [loading,         setLoading]         = useState(false);
   const [tipoReporte,     setTipoReporte]     = useState('productos-vendidos');
   const [periodo,         setPeriodo]         = useState({
-    fechaInicio: new Date(new Date().setDate(1)).toISOString().split('T')[0],
-    fechaFin:    new Date().toISOString().split('T')[0]
+    fechaInicio: fechaLocal(new Date(new Date().setDate(1))),
+    fechaFin:    fechaLocal(new Date())
   });
   const [datos,           setDatos]           = useState(null);
   const [rawDatos,        setRawDatos]        = useState(null); // para debug/fallback

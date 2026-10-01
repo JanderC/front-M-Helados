@@ -39,12 +39,13 @@ export const cajaService = {
     return api.get("/caja/estado");
   },
 
-  // Flujo de caja
+  // Flujo de caja. Las fechas son días ('YYYY-MM-DD'), ambos inclusive
   getFlujo: (params = {}) => {
     const queryParams = {
-      fecha_inicio: params.fechaInicio,
-      fecha_fin: params.fechaFin,
+      fecha_inicio: params.fecha_inicio ?? params.fechaInicio,
+      fecha_fin: params.fecha_fin ?? params.fechaFin,
       tipo: params.tipo,
+      id_arqueo: params.id_arqueo,
     };
     return api.get("/caja/flujo", { params: queryParams });
   },
@@ -68,8 +69,8 @@ export const cajaService = {
   getResumenVentas: (params = {}) => {
     const queryParams = {
       periodo: params.periodo || "diario",
-      fecha_inicio: params.fechaInicio,
-      fecha_fin: params.fechaFin,
+      fecha_inicio: params.fecha_inicio ?? params.fechaInicio,
+      fecha_fin: params.fecha_fin ?? params.fechaFin,
     };
     return api.get("/caja/resumen-ventas", { params: queryParams });
   },

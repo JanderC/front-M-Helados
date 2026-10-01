@@ -6,109 +6,134 @@ import { toast } from 'react-toastify';
 
 /* ─── helpers ─────────────────────────────────────── */
 const num = (v) => parseFloat(v) || 0;
+const redondear = (v) => Math.round(v * 100) / 100;
+
+const MONEDAS_INFO = [
+  { cod: 'COP', label: 'Pesos Colombianos', icon: 'bi-cash',            color: '#92400e', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.3)' },
+  { cod: 'USD', label: 'Dólares',           icon: 'bi-currency-dollar', color: '#15803d', bg: 'rgba(34,197,94,0.07)',  border: 'rgba(34,197,94,0.3)'  },
+  { cod: 'VES', label: 'Bolívares',         icon: 'bi-cash-coin',       color: '#1d4ed8', bg: 'rgba(59,130,246,0.07)', border: 'rgba(59,130,246,0.3)' },
+];
 
 /**
  * CerrarCajaModal
+ * Todo el cuadre sale de GET /api/caja/estado, que solo cuenta las ventas y
+ * movimientos registrados en la caja abierta (no las del día calendario).
+ *
  * Props:
  *  - show: boolean
  *  - onHide: fn
  *  - estadoCaja: objeto retornado por GET /api/caja/estado
  *      estadoCaja.ventas_dia = { total_cop, total_usd_original, total_ves, total_usd, total_ventas }
- *      estadoCaja.monto_inicial_cop / usd / ves
- *      estadoCaja.fecha_apertura
- *      estadoCaja.usuario_apertura
- *      estadoCaja.desglose_metodos_pago = [{ codigo, nombre, icono, codigo_moneda, total, cantidad_ventas }] ✅ NUEVO
- *  - resumenVentas: objeto con totales reales del período (pasado desde FlujoCajaScreen)
- *      { total_cop, total_usd_original, total_ves, total_usd, total_ventas }
- *  - desglosePagos: array [{ codigo, nombre, icono, codigo_moneda, total, cantidad_ventas }] ✅ NUEVO
- *      (si no se pasa explícito, se usa estadoCaja.desglose_metodos_pago)
- *  - ventasDelDia: array de ventas para mostrar en la lista del modal
+ *      estadoCaja.efectivo   = { COP|USD|VES: { inicial, ventas, ventas_efectivo, ingresos, egresos, esperado } }
+ *      estadoCaja.desglose_metodos_pago = [{ codigo, nombre, icono, codigo_moneda, total, cantidad_ventas }]
+ *      estadoCaja.ventas_pendientes = ventas sin completar de esta caja
  *  - onSuccess: fn callback tras cerrar con éxito
  */
-const CerrarCajaModal = ({ show, onHide, estadoCaja, resumenVentas, desglosePagos, ventasDelDia = [], onSuccess }) => {
+const CerrarCajaModal = ({ show, onHide, estadoCaja, onSuccess }) => {
   const [cerrando, setCerrando]         = useState(false);
   const [observaciones, setObservaciones] = useState('');
   const [mostrarVentas, setMostrarVentas] = useState(false);
+
+  // Estado de caja recién consultado y ventas del turno
+  const [caja, setCaja]               = useState(estadoCaja);
+  const [ventasTurno, setVentasTurno] = useState([]);
+  const [cargando, setCargando]       = useState(false);
 
   // Montos finales reales que ingresa el cajero
   const [finalCOP, setFinalCOP] = useState('');
   const [finalUSD, setFinalUSD] = useState('');
   const [finalVES, setFinalVES] = useState('');
 
-  // Reset cuando se abre el modal
+  // Al abrir el modal: limpiar y volver a pedir el estado, para cuadrar
+  // contra las ventas de este momento y no contra datos viejos en pantalla
   useEffect(() => {
-    if (show) {
-      setFinalCOP('');
-      setFinalUSD('');
-      setFinalVES('');
-      setObservaciones('');
-      setMostrarVentas(false);
-    }
+    if (!show) return;
+
+    setFinalCOP('');
+    setFinalUSD('');
+    setFinalVES('');
+    setObservaciones('');
+    setMostrarVentas(false);
+    setVentasTurno([]);
+    setCaja(estadoCaja);
+
+    let vigente = true;
+    const cargar = async () => {
+      try {
+        setCargando(true);
+        const estadoRes = await cajaService.getEstado();
+        const cajaActual = estadoRes.data?.data;
+        if (!vigente || !cajaActual) return;
+        setCaja(cajaActual);
+        const ventasRes = await cajaService.getVentasPorArqueo(cajaActual.id_arqueo);
+        if (vigente) setVentasTurno(ventasRes.data?.data?.ventas || []);
+      } catch (err) {
+        console.error('Error al actualizar el estado de caja:', err);
+      } finally {
+        if (vigente) setCargando(false);
+      }
+    };
+    cargar();
+
+    return () => { vigente = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [show]);
 
-  /* ── FIX: Preferir resumenVentas (más completo) sobre ventas_dia.
-     num() garantiza que null/undefined → 0, nunca NaN. ── */
-  const ventasFuente = resumenVentas || estadoCaja?.ventas_dia || {};
-  const ventasCOP    = num(ventasFuente.total_cop);
-  const ventasUSD    = num(ventasFuente.total_usd_original);
-  const ventasVES    = num(ventasFuente.total_ves);
-  const totalVentas  = parseInt(ventasFuente.total_ventas) || 0;
-  const totalUSDRef  = num(ventasFuente.total_usd);
+  const ventasDia          = caja?.ventas_dia || {};
+  const totalVentas        = parseInt(ventasDia.total_ventas) || 0;
+  const totalUSDRef        = num(ventasDia.total_usd);
+  const ventasPendientes   = parseInt(caja?.ventas_pendientes) || 0;
+  const desglosePagosData  = caja?.desglose_metodos_pago || [];
 
-  // ✅ NUEVO: desglose por método de pago (Nequi, Pago Móvil, Bancolombia, etc.)
-  const desglosePagosData = desglosePagos || estadoCaja?.desglose_metodos_pago || [];
+  const valores = { COP: finalCOP, USD: finalUSD, VES: finalVES };
+  const setters = { COP: setFinalCOP, USD: setFinalUSD, VES: setFinalVES };
 
-  /* ── Montos iniciales de la caja ── */
-  const inicialCOP = num(estadoCaja?.monto_inicial_cop);
-  const inicialUSD = num(estadoCaja?.monto_inicial_usd);
-  const inicialVES = num(estadoCaja?.monto_inicial_ves);
+  /* ── Cuadre por moneda:
+        esperado = inicial + ventas en efectivo + ingresos − egresos ── */
+  const monedas = MONEDAS_INFO.map((info) => {
+    const sufijo   = info.cod.toLowerCase();
+    const efectivo = caja?.efectivo?.[info.cod];
+    const inicial  = num(caja?.[`monto_inicial_${sufijo}`]);
+    const ventas   = efectivo
+      ? num(efectivo.ventas)
+      : num(info.cod === 'USD' ? ventasDia.total_usd_original : ventasDia[`total_${sufijo}`]);
+    const ventasEfectivo = efectivo ? num(efectivo.ventas_efectivo) : ventas;
+    const ingresos = num(efectivo?.ingresos);
+    const egresos  = num(efectivo?.egresos);
+    const esperado = efectivo ? num(efectivo.esperado) : inicial + ventas;
+    const val      = valores[info.cod];
 
-  /* ── Esperado = inicial + ventas por moneda ── */
-  const esperadoCOP = inicialCOP + ventasCOP;
-  const esperadoUSD = inicialUSD + ventasUSD;
-  const esperadoVES = inicialVES + ventasVES;
+    return {
+      ...info,
+      inicial, ventas, ventasEfectivo, ingresos, egresos, esperado,
+      otrosMedios: redondear(ventas - ventasEfectivo),
+      val,
+      setVal: setters[info.cod],
+      dif: val !== '' ? redondear(num(val) - esperado) : null,
+    };
+  });
 
-  /* ── Diferencias ── */
-  const difCOP = finalCOP !== '' ? num(finalCOP) - esperadoCOP : null;
-  const difUSD = finalUSD !== '' ? num(finalUSD) - esperadoUSD : null;
-  const difVES = finalVES !== '' ? num(finalVES) - esperadoVES : null;
-
-  /* ── Monedas activas (tienen inicial o ventas) ── */
-  const monedasActivas = [
-    { cod: 'COP', label: 'Pesos Colombianos',    icon: 'bi-cash',            color: '#92400e', bg: 'rgba(245,158,11,0.08)',  border: 'rgba(245,158,11,0.3)',  inicial: inicialCOP, ventas: ventasCOP, esperado: esperadoCOP, val: finalCOP, setVal: setFinalCOP, dif: difCOP },
-    { cod: 'USD', label: 'Dólares',               icon: 'bi-currency-dollar', color: '#15803d', bg: 'rgba(34,197,94,0.07)',  border: 'rgba(34,197,94,0.3)',   inicial: inicialUSD, ventas: ventasUSD, esperado: esperadoUSD, val: finalUSD, setVal: setFinalUSD, dif: difUSD },
-    { cod: 'VES', label: 'Bolívares',             icon: 'bi-cash-coin',       color: '#1d4ed8', bg: 'rgba(59,130,246,0.07)', border: 'rgba(59,130,246,0.3)',  inicial: inicialVES, ventas: ventasVES, esperado: esperadoVES, val: finalVES, setVal: setFinalVES, dif: difVES },
-  ].filter(m => m.inicial > 0 || m.ventas > 0);
-
-  const monedasMostrar = monedasActivas.length > 0 ? monedasActivas : [
-    { cod: 'COP', label: 'Pesos Colombianos', icon: 'bi-cash', color: '#92400e', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.2)', inicial: 0, ventas: 0, esperado: 0, val: finalCOP, setVal: setFinalCOP, dif: difCOP }
-  ];
+  /* ── Monedas activas (tienen inicial, ventas o movimientos) ── */
+  const monedasActivas = monedas.filter(m => m.inicial > 0 || m.ventas > 0 || m.ingresos > 0 || m.egresos > 0);
+  const monedasMostrar = monedasActivas.length > 0 ? monedasActivas : [monedas[0]];
 
   /* ── Cerrar caja ── */
   const handleCerrar = async () => {
-    const monedaConVentas = monedasMostrar.find(m => m.ventas > 0 || m.inicial > 0);
-    if (monedaConVentas) {
-      const tieneMonto = monedasMostrar.every(m => {
-        if (m.ventas > 0 || m.inicial > 0) return m.val !== '';
-        return true;
-      });
-      if (!tieneMonto) {
-        toast.warning('Ingresa el monto final para cada moneda con actividad');
-        return;
-      }
+    if (ventasPendientes > 0) {
+      toast.warning('Completa o cancela las ventas pendientes antes de cerrar');
+      return;
+    }
+    if (monedasActivas.some(m => m.val === '')) {
+      toast.warning('Ingresa el monto contado para cada moneda con actividad');
+      return;
     }
 
     try {
       setCerrando(true);
-      const body = {
-        monto_final_cop: finalCOP !== '' ? num(finalCOP) : 0,
-        monto_final_usd: finalUSD !== '' ? num(finalUSD) : 0,
-        monto_final_ves: finalVES !== '' ? num(finalVES) : 0,
-        notas: observaciones.trim() || null,
-      };
-
-      const { default: api } = await import('../../api/axiosConfig');
-      const response = await api.post('/caja/cerrar', body);
+      const response = await cajaService.cerrar(
+        { cop: finalCOP, usd: finalUSD, ves: finalVES },
+        observaciones.trim()
+      );
 
       if (response.data?.success) {
         toast.success('✅ Caja cerrada correctamente');
@@ -186,6 +211,9 @@ const CerrarCajaModal = ({ show, onHide, estadoCaja, resumenVentas, desglosePago
           font-size: 0.84rem; color: #92400e;
         }
         .cm-alert i { font-size: 1rem; flex-shrink: 0; margin-top: 1px; }
+        .cm-alert.pendientes {
+          background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.3); color: #b91c1c;
+        }
 
         /* ── Layout 2 columnas ── */
         .cm-two-col {
@@ -279,6 +307,7 @@ const CerrarCajaModal = ({ show, onHide, estadoCaja, resumenVentas, desglosePago
           text-align: right;
         }
         .cm-resumen-cell-val.ventas  { color: #15803d; }
+        .cm-resumen-cell-val.egresos { color: #dc2626; }
         .cm-resumen-cell-val.esperado { color: #7B2FBE; font-size: 1rem; }
 
         /* ── Separadores ── */
@@ -421,6 +450,16 @@ const CerrarCajaModal = ({ show, onHide, estadoCaja, resumenVentas, desglosePago
               <span>Al cerrar la caja se realizará el arqueo y no podrás realizar más transacciones hasta abrir una nueva caja.</span>
             </div>
 
+            {ventasPendientes > 0 && (
+              <div className="cm-alert pendientes">
+                <i className="bi bi-hourglass-split"/>
+                <span>
+                  Hay {ventasPendientes} {ventasPendientes === 1 ? 'venta pendiente' : 'ventas pendientes'} en esta caja.
+                  Complétalas o cancélalas en la lista de ventas para poder cerrar.
+                </span>
+              </div>
+            )}
+
             {/* ── Fila 2 columnas: Info del turno + Resumen por moneda ── */}
             <div className="cm-two-col">
 
@@ -430,15 +469,15 @@ const CerrarCajaModal = ({ show, onHide, estadoCaja, resumenVentas, desglosePago
                 <div className="cm-info-row">
                   <span className="cm-info-row-label">Fecha Apertura</span>
                   <span className="cm-info-row-val">
-                    {estadoCaja?.fecha_apertura ? formatDateTime(estadoCaja.fecha_apertura) : '—'}
+                    {caja?.fecha_apertura ? formatDateTime(caja.fecha_apertura) : '—'}
                   </span>
                 </div>
                 <div className="cm-info-row">
                   <span className="cm-info-row-label">Responsable</span>
-                  <span className="cm-info-row-val">{estadoCaja?.usuario_apertura || '—'}</span>
+                  <span className="cm-info-row-val">{caja?.usuario_apertura || '—'}</span>
                 </div>
                 <div className="cm-info-row">
-                  <span className="cm-info-row-label">Total Ventas</span>
+                  <span className="cm-info-row-label">Ventas de esta caja</span>
                   <span className="cm-ventas-chip">
                     {totalVentas} {totalVentas === 1 ? 'venta' : 'ventas'}
                   </span>
@@ -452,29 +491,17 @@ const CerrarCajaModal = ({ show, onHide, estadoCaja, resumenVentas, desglosePago
                   </div>
                 )}
                 {/* Montos iniciales */}
-                {(inicialCOP > 0 || inicialUSD > 0 || inicialVES > 0) && (
+                {monedas.some(m => m.inicial > 0) && (
                   <>
                     <div className="cm-info-row" style={{ marginTop: 6, borderTop: '1px solid rgba(123,47,190,0.1)', paddingTop: 10 }}>
                       <span className="cm-info-row-label" style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Montos iniciales</span>
                     </div>
-                    {inicialCOP > 0 && (
-                      <div className="cm-info-row">
-                        <span className="cm-info-row-label">COP</span>
-                        <span className="cm-info-row-val">{formatCurrency(inicialCOP, 'COP')}</span>
+                    {monedas.filter(m => m.inicial > 0).map(m => (
+                      <div key={m.cod} className="cm-info-row">
+                        <span className="cm-info-row-label">{m.cod}</span>
+                        <span className="cm-info-row-val">{formatCurrency(m.inicial, m.cod)}</span>
                       </div>
-                    )}
-                    {inicialUSD > 0 && (
-                      <div className="cm-info-row">
-                        <span className="cm-info-row-label">USD</span>
-                        <span className="cm-info-row-val">{formatCurrency(inicialUSD, 'USD')}</span>
-                      </div>
-                    )}
-                    {inicialVES > 0 && (
-                      <div className="cm-info-row">
-                        <span className="cm-info-row-label">VES</span>
-                        <span className="cm-info-row-val">{formatCurrency(inicialVES, 'VES')}</span>
-                      </div>
-                    )}
+                    ))}
                   </>
                 )}
               </div>
@@ -495,17 +522,35 @@ const CerrarCajaModal = ({ show, onHide, estadoCaja, resumenVentas, desglosePago
                           <div className="cm-resumen-cell-val">{formatCurrency(m.inicial, m.cod)}</div>
                         </div>
                         <div className="cm-resumen-cell">
-                          <div className="cm-resumen-cell-label">Ventas del Día</div>
+                          <div className="cm-resumen-cell-label">Ventas en efectivo</div>
                           <div className="cm-resumen-cell-val ventas">
-                            +{formatCurrency(m.ventas, m.cod)}
+                            +{formatCurrency(m.ventasEfectivo, m.cod)}
                           </div>
                         </div>
+                        {m.ingresos > 0 && (
+                          <div className="cm-resumen-cell">
+                            <div className="cm-resumen-cell-label">Ingresos de caja</div>
+                            <div className="cm-resumen-cell-val ventas">+{formatCurrency(m.ingresos, m.cod)}</div>
+                          </div>
+                        )}
+                        {m.egresos > 0 && (
+                          <div className="cm-resumen-cell">
+                            <div className="cm-resumen-cell-label">Egresos de caja</div>
+                            <div className="cm-resumen-cell-val egresos">−{formatCurrency(m.egresos, m.cod)}</div>
+                          </div>
+                        )}
                         <div className="cm-resumen-cell">
                           <div className="cm-resumen-cell-label">Esperado en Caja</div>
                           <div className="cm-resumen-cell-val esperado">
                             {formatCurrency(m.esperado, m.cod)}
                           </div>
                         </div>
+                        {m.otrosMedios > 0 && (
+                          <div className="cm-resumen-cell">
+                            <div className="cm-resumen-cell-label">Otros medios (no entra a la gaveta)</div>
+                            <div className="cm-resumen-cell-val">{formatCurrency(m.otrosMedios, m.cod)}</div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -546,7 +591,7 @@ const CerrarCajaModal = ({ show, onHide, estadoCaja, resumenVentas, desglosePago
             )}
 
             {/* ── FIX: Listado de ventas del turno (colapsable) ── */}
-            {ventasDelDia.length > 0 && (
+            {ventasTurno.length > 0 && (
               <>
                 <div className="cm-section-title">
                   Detalle de ventas del turno
@@ -555,7 +600,7 @@ const CerrarCajaModal = ({ show, onHide, estadoCaja, resumenVentas, desglosePago
                     onClick={() => setMostrarVentas(v => !v)}
                   >
                     <i className={`bi ${mostrarVentas ? 'bi-chevron-up' : 'bi-chevron-down'}`}/>
-                    {mostrarVentas ? 'Ocultar' : `Ver ${ventasDelDia.length} ventas`}
+                    {mostrarVentas ? 'Ocultar' : `Ver ${ventasTurno.length} ventas`}
                   </button>
                 </div>
                 {mostrarVentas && (
@@ -572,7 +617,7 @@ const CerrarCajaModal = ({ show, onHide, estadoCaja, resumenVentas, desglosePago
                         </tr>
                       </thead>
                       <tbody>
-                        {ventasDelDia.map(venta => (
+                        {ventasTurno.map(venta => (
                           <tr key={venta.id_venta}>
                             <td className="fw-bold text-primary">{venta.numero_factura}</td>
                             <td className="text-muted">{formatDateTime(venta.fecha_venta)}</td>
@@ -590,7 +635,7 @@ const CerrarCajaModal = ({ show, onHide, estadoCaja, resumenVentas, desglosePago
                       {/* Subtotales por moneda al pie de la tabla */}
                       <tfoot className="table-light">
                         <tr>
-                          <td colSpan="4" className="text-end fw-bold text-muted small">Totales del período:</td>
+                          <td colSpan="4" className="text-end fw-bold text-muted small">Totales de esta caja:</td>
                           <td className="text-end" colSpan="2">
                             {monedasMostrar.map(m => m.ventas > 0 ? (
                               <div key={m.cod} className="fw-bold text-success small">
@@ -622,7 +667,7 @@ const CerrarCajaModal = ({ show, onHide, estadoCaja, resumenVentas, desglosePago
                     </div>
                     <div style={{ minWidth: 0 }}>
                       <div className="cm-monto-label">{m.label}</div>
-                      <div className="cm-monto-cod">{m.cod} • Efectivo real contado</div>
+                      <div className="cm-monto-cod">{m.cod} • Efectivo contado en la gaveta</div>
                     </div>
                     <div className="cm-monto-esperado">
                       <div className="cm-monto-esp-label">Esperado</div>
@@ -647,13 +692,15 @@ const CerrarCajaModal = ({ show, onHide, estadoCaja, resumenVentas, desglosePago
                   {m.val !== '' && m.dif !== null && (
                     <div className={`cm-dif ${m.dif >= 0 ? 'ok' : 'neg'}`}>
                       <span className={`cm-dif-label ${m.dif >= 0 ? 'ok' : 'neg'}`}>
-                        {m.dif >= 0
-                          ? <><i className="bi bi-check-circle me-1"/>Sobrante:</>
-                          : <><i className="bi bi-exclamation-circle me-1"/>Faltante:</>
+                        {m.dif === 0
+                          ? <><i className="bi bi-check-circle me-1"/>Cuadra exacto</>
+                          : m.dif > 0
+                            ? <><i className="bi bi-plus-circle me-1"/>Sobrante:</>
+                            : <><i className="bi bi-exclamation-circle me-1"/>Faltante:</>
                         }
                       </span>
                       <span className={`cm-dif-val ${m.dif >= 0 ? 'ok' : 'neg'}`}>
-                        {m.dif >= 0 ? '+' : ''}{formatCurrency(m.dif, m.cod)}
+                        {m.dif > 0 ? '+' : ''}{formatCurrency(m.dif, m.cod)}
                       </span>
                     </div>
                   )}
@@ -674,7 +721,7 @@ const CerrarCajaModal = ({ show, onHide, estadoCaja, resumenVentas, desglosePago
           {/* ── Footer ── */}
           <div className="cm-footer">
             <button className="cm-btn-cancel" onClick={onHide}>Cancelar</button>
-            <button className="cm-btn-cerrar" onClick={handleCerrar} disabled={cerrando}>
+            <button className="cm-btn-cerrar" onClick={handleCerrar} disabled={cerrando || cargando || ventasPendientes > 0}>
               {cerrando
                 ? <><Spinner animation="border" size="sm"/>Cerrando...</>
                 : <><i className="bi bi-lock-fill"/>Cerrar Caja</>

@@ -30,8 +30,36 @@ const getMesActual = () => {
 const buildFiltroParams = (filtros) => {
   const params = {};
   if (filtros.fechaInicio) params.fecha_inicio = filtros.fechaInicio;
-  if (filtros.fechaFin)    params.fecha_fin    = filtros.fechaFin + 'T23:59:59';
+  if (filtros.fechaFin)    params.fecha_fin    = filtros.fechaFin;
   return params;
+};
+
+const MONEDAS = ['COP', 'USD', 'VES'];
+
+// Ventas reales del turno de un arqueo, por moneda
+const ventasDeArqueo = (arqueo) => {
+  const cierre = arqueo.resumen_cierre?.por_moneda;
+  if (cierre) {
+    return { COP: num(cierre.COP?.ventas), USD: num(cierre.USD?.ventas), VES: num(cierre.VES?.ventas) };
+  }
+  return { COP: num(arqueo.ventas_cop), USD: num(arqueo.ventas_usd), VES: num(arqueo.ventas_ves) };
+};
+
+// Diferencias del cierre (contado − esperado) por moneda
+const diferenciasDeArqueo = (arqueo) => {
+  const cierre = arqueo.resumen_cierre?.por_moneda;
+  if (cierre) {
+    return MONEDAS
+      .filter((moneda) => num(cierre[moneda]?.esperado) !== 0 || num(cierre[moneda]?.contado) !== 0)
+      .map((moneda) => ({ moneda, diferencia: num(cierre[moneda].diferencia) }));
+  }
+  // Cierres anteriores: una sola diferencia, en la moneda principal de la caja
+  const moneda =
+    num(arqueo.monto_inicial_cop) > 0 || num(arqueo.monto_final_cop) > 0 ? 'COP'
+    : num(arqueo.monto_inicial_usd) > 0 || num(arqueo.monto_final_usd) > 0 ? 'USD'
+    : num(arqueo.monto_inicial_ves) > 0 || num(arqueo.monto_final_ves) > 0 ? 'VES'
+    : 'COP';
+  return [{ moneda, diferencia: num(arqueo.diferencia_usd) }];
 };
 
 const formatFecha = (fechaStr) => {
@@ -88,6 +116,7 @@ const DetalleCierreModal = ({ show, onHide, arqueo, onVerVenta }) => {
   };
 
   const colorEstado = { COMPLETADA: 'success', PENDIENTE: 'warning', EN_PROCESO: 'info', CANCELADA: 'danger' };
+  const cuadre = arqueo?.resumen_cierre?.por_moneda;
 
   return (
     <Modal show={show} onHide={onHide} size="xl" centered scrollable>
@@ -139,6 +168,50 @@ const DetalleCierreModal = ({ show, onHide, arqueo, onVerVenta }) => {
                 ))}
               </Col>
             </Row>
+          </div>
+        )}
+
+        {cuadre && (
+          <div className="border-bottom px-4 py-3">
+            <div className="small text-muted fw-semibold mb-2">
+              <i className="bi bi-calculator me-1"></i>Cuadre de efectivo
+            </div>
+            <Table size="sm" className="mb-0 align-middle" style={{ fontSize: '0.85rem' }}>
+              <thead className="table-light">
+                <tr>
+                  <th>Moneda</th>
+                  <th className="text-end">Inicial</th>
+                  <th className="text-end">Ventas efectivo</th>
+                  <th className="text-end">Ingresos</th>
+                  <th className="text-end">Egresos</th>
+                  <th className="text-end">Esperado</th>
+                  <th className="text-end">Contado</th>
+                  <th className="text-end">Diferencia</th>
+                </tr>
+              </thead>
+              <tbody>
+                {MONEDAS
+                  .filter((moneda) => num(cuadre[moneda]?.esperado) !== 0 || num(cuadre[moneda]?.contado) !== 0)
+                  .map((moneda) => {
+                    const c = cuadre[moneda];
+                    const dif = num(c.diferencia);
+                    return (
+                      <tr key={moneda}>
+                        <td><Badge bg="secondary">{moneda}</Badge></td>
+                        <td className="text-end">{formatCurrency(c.inicial, moneda)}</td>
+                        <td className="text-end text-success">{formatCurrency(c.ventas_efectivo, moneda)}</td>
+                        <td className="text-end">{formatCurrency(c.ingresos, moneda)}</td>
+                        <td className="text-end">{formatCurrency(c.egresos, moneda)}</td>
+                        <td className="text-end fw-semibold">{formatCurrency(c.esperado, moneda)}</td>
+                        <td className="text-end fw-semibold">{formatCurrency(c.contado, moneda)}</td>
+                        <td className={`text-end fw-bold ${dif === 0 ? 'text-success' : dif > 0 ? 'text-info' : 'text-danger'}`}>
+                          {dif === 0 ? 'Exacto' : `${dif > 0 ? '+' : '−'}${formatCurrency(Math.abs(dif), moneda)}`}
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </Table>
           </div>
         )}
 
@@ -313,14 +386,14 @@ const FlujoCajaScreen = () => {
       const response = await cajaService.getHistorialArqueos({
         limit:        100,
         fecha_inicio: fechaInicio,
-        fecha_fin:    fechaFin + 'T23:59:59',
+        fecha_fin:    fechaFin,
       });
       const data = response.data?.data || [];
       const arr  = Array.isArray(data) ? data : [];
 
       // Filtro defensivo en el front por si el backend no filtra por fechas
-      const inicio = new Date(fechaInicio);
-      const fin    = new Date(fechaFin + 'T23:59:59');
+      const inicio = new Date(year, month - 1, 1);
+      const fin    = new Date(year, month - 1, lastDay, 23, 59, 59);
       const filtrados = arr.filter((a) => {
         const f = new Date(a.fecha_apertura);
         return f >= inicio && f <= fin;
@@ -415,6 +488,8 @@ const FlujoCajaScreen = () => {
   const totales       = calcularTotales();
   const totalesVentas = calcularTotalesVentas();
   const cajaAbierta   = estadoCaja?.estado === 'ABIERTA' || estadoCaja?.abierta === true;
+  // Con caja abierta las tarjetas muestran solo lo vendido en esa caja
+  const ventasTarjetas = cajaAbierta && estadoCaja?.ventas_dia ? estadoCaja.ventas_dia : resumenVentas;
   const totalPaginas  = Math.ceil(totalVentasCount / VENTAS_POR_PAGINA);
   const arqueosCerrados = historial.filter(a => a.estado === 'CERRADA');
 
@@ -433,14 +508,12 @@ const FlujoCajaScreen = () => {
     paginaFlujo * FLUJO_POR_PAGINA
   );
 
-  // Totales del mes: suma de ventas netas (monto_final − monto_inicial) por moneda
+  // Totales del mes: suma de las ventas reales de cada cierre, por moneda
   const totalesMes = arqueosCerrados.reduce((acc, a) => {
-    const ventasCOP = num(a.monto_final_cop) - num(a.monto_inicial_cop);
-    const ventasUSD = num(a.monto_final_usd) - num(a.monto_inicial_usd);
-    const ventasVES = num(a.monto_final_ves) - num(a.monto_inicial_ves);
-    if (ventasCOP > 0) { acc['COP'] = (acc['COP'] || 0) + ventasCOP; }
-    if (ventasUSD > 0) { acc['USD'] = (acc['USD'] || 0) + ventasUSD; }
-    if (ventasVES > 0) { acc['VES'] = (acc['VES'] || 0) + ventasVES; }
+    const ventas = ventasDeArqueo(a);
+    MONEDAS.forEach((moneda) => {
+      if (ventas[moneda] > 0) acc[moneda] = (acc[moneda] || 0) + ventas[moneda];
+    });
     return acc;
   }, {});
 
@@ -493,11 +566,11 @@ const FlujoCajaScreen = () => {
                 </Col>
                 {cajaAbierta && estadoCaja && (
                   <>
-                    <Col md={3}>
+                    <Col md={2}>
                       <small className="text-muted d-block">Apertura</small>
                       <strong>{formatDateTime(estadoCaja.fecha_apertura)}</strong>
                     </Col>
-                    <Col md={3}>
+                    <Col md={2}>
                       <small className="text-muted d-block">Monto Inicial</small>
                       <strong className="text-primary">
                         {num(estadoCaja.monto_inicial_cop) > 0 && <div>{formatCurrency(estadoCaja.monto_inicial_cop, 'COP')}</div>}
@@ -505,7 +578,7 @@ const FlujoCajaScreen = () => {
                         {num(estadoCaja.monto_inicial_ves) > 0 && <div>{formatCurrency(estadoCaja.monto_inicial_ves, 'VES')}</div>}
                       </strong>
                     </Col>
-                    <Col md={3}>
+                    <Col md={2}>
                       {estadoCaja.ventas_dia && (
                         <div>
                           <small className="text-muted d-block">Ventas desde apertura</small>
@@ -513,6 +586,24 @@ const FlujoCajaScreen = () => {
                           {num(estadoCaja.ventas_dia.total_cop) > 0 && <div className="small">{formatCurrency(estadoCaja.ventas_dia.total_cop, 'COP')}</div>}
                           {num(estadoCaja.ventas_dia.total_usd_original) > 0 && <div className="small">{formatCurrency(estadoCaja.ventas_dia.total_usd_original, 'USD')}</div>}
                           {num(estadoCaja.ventas_dia.total_ves) > 0 && <div className="small">{formatCurrency(estadoCaja.ventas_dia.total_ves, 'VES')}</div>}
+                        </div>
+                      )}
+                    </Col>
+                    <Col md={3}>
+                      {estadoCaja.efectivo && (
+                        <div>
+                          <small className="text-muted d-block">Efectivo esperado en caja</small>
+                          <strong>
+                            {MONEDAS.filter((moneda) => num(estadoCaja.efectivo[moneda]?.esperado) !== 0).map((moneda) => (
+                              <div key={moneda}>{formatCurrency(estadoCaja.efectivo[moneda].esperado, moneda)} <span className="text-muted small fw-normal">{moneda}</span></div>
+                            ))}
+                          </strong>
+                          {num(estadoCaja.ventas_pendientes) > 0 && (
+                            <div className="small text-warning">
+                              <i className="bi bi-hourglass-split me-1"></i>
+                              {estadoCaja.ventas_pendientes} venta(s) pendiente(s)
+                            </div>
+                          )}
                         </div>
                       )}
                     </Col>
@@ -533,6 +624,10 @@ const FlujoCajaScreen = () => {
       </Row>
 
       {/* ── Resumen de Ventas ── */}
+      <p className="text-muted small mb-2">
+        <i className="bi bi-info-circle me-1"></i>
+        {cajaAbierta ? 'Ventas de la caja abierta (desde la apertura)' : 'Ventas del período seleccionado'}
+      </p>
       <Row className="mb-4">
         <Col md={4}>
           <Card className="border-0 shadow-sm h-100">
@@ -540,7 +635,7 @@ const FlujoCajaScreen = () => {
               <div className="d-flex justify-content-between align-items-start">
                 <div>
                   <p className="text-muted mb-1">Ventas en USD</p>
-                  <h3 className="fw-bold mb-0 text-success">{formatCurrency(num(resumenVentas?.total_usd_original), 'USD')}</h3>
+                  <h3 className="fw-bold mb-0 text-success">{formatCurrency(num(ventasTarjetas?.total_usd_original), 'USD')}</h3>
                 </div>
                 <div className="bg-success bg-opacity-10 p-3 rounded">
                   <i className="bi bi-currency-dollar text-success" style={{ fontSize: '1.5rem' }}></i>
@@ -555,7 +650,7 @@ const FlujoCajaScreen = () => {
               <div className="d-flex justify-content-between align-items-start">
                 <div>
                   <p className="text-muted mb-1">Ventas en Bolívares</p>
-                  <h3 className="fw-bold mb-0 text-info">{formatCurrency(num(resumenVentas?.total_ves), 'VES')}</h3>
+                  <h3 className="fw-bold mb-0 text-info">{formatCurrency(num(ventasTarjetas?.total_ves), 'VES')}</h3>
                 </div>
                 <div className="bg-info bg-opacity-10 p-3 rounded">
                   <i className="bi bi-cash-coin text-info" style={{ fontSize: '1.5rem' }}></i>
@@ -570,14 +665,14 @@ const FlujoCajaScreen = () => {
               <div className="d-flex justify-content-between align-items-start">
                 <div>
                   <p className="text-muted mb-1">Ventas en Pesos</p>
-                  <h3 className="fw-bold mb-0 text-warning">{formatCurrency(num(resumenVentas?.total_cop), 'COP')}</h3>
+                  <h3 className="fw-bold mb-0 text-warning">{formatCurrency(num(ventasTarjetas?.total_cop), 'COP')}</h3>
                 </div>
                 <div className="bg-warning bg-opacity-10 p-3 rounded">
                   <i className="bi bi-cash text-warning" style={{ fontSize: '1.5rem' }}></i>
                 </div>
               </div>
-              {resumenVentas?.total_ventas > 0 && (
-                <p className="text-muted small mt-2 mb-0">{resumenVentas.total_ventas} ventas completadas</p>
+              {ventasTarjetas?.total_ventas > 0 && (
+                <p className="text-muted small mt-2 mb-0">{ventasTarjetas.total_ventas} ventas completadas</p>
               )}
             </Card.Body>
           </Card>
@@ -647,23 +742,20 @@ const FlujoCajaScreen = () => {
                       <th>Abrió</th>
                       <th>Cerró</th>
                       <th className="text-end">Monto Inicial</th>
-                      <th className="text-end">Ventas del Día</th>
+                      <th className="text-end">Ventas de la Caja</th>
                       <th className="text-center">Diferencia</th>
                       <th className="text-center">Ver Ventas</th>
                     </tr>
                   </thead>
                   <tbody>
                     {cierresPaginados.map((arqueo) => {
-                      const diferencia = num(arqueo.diferencia_usd);
+                      const diferencias = diferenciasDeArqueo(arqueo);
+                      const ventas = ventasDeArqueo(arqueo);
                       const monedaPrincipal =
                         num(arqueo.monto_inicial_cop) > 0 ? 'COP'
                         : num(arqueo.monto_inicial_usd) > 0 ? 'USD'
                         : num(arqueo.monto_inicial_ves) > 0 ? 'VES'
                         : null;
-
-                      const ventasCOP = num(arqueo.monto_final_cop) - num(arqueo.monto_inicial_cop);
-                      const ventasUSD = num(arqueo.monto_final_usd) - num(arqueo.monto_inicial_usd);
-                      const ventasVES = num(arqueo.monto_final_ves) - num(arqueo.monto_inicial_ves);
 
                       return (
                         <tr key={arqueo.id_arqueo}>
@@ -686,18 +778,22 @@ const FlujoCajaScreen = () => {
                             {!monedaPrincipal && <span className="text-muted">—</span>}
                           </td>
                           <td className="text-end small fw-semibold">
-                            {ventasCOP > 0 && <div className="text-success">{formatCurrency(ventasCOP, 'COP')}</div>}
-                            {ventasUSD > 0 && <div className="text-success">{formatCurrency(ventasUSD, 'USD')}</div>}
-                            {ventasVES > 0 && <div className="text-success">{formatCurrency(ventasVES, 'VES')}</div>}
-                            {ventasCOP <= 0 && ventasUSD <= 0 && ventasVES <= 0 && <span className="text-muted">—</span>}
+                            {MONEDAS.filter((moneda) => ventas[moneda] > 0).map((moneda) => (
+                              <div key={moneda} className="text-success">{formatCurrency(ventas[moneda], moneda)}</div>
+                            ))}
+                            {MONEDAS.every((moneda) => ventas[moneda] <= 0) && <span className="text-muted">—</span>}
                           </td>
                           <td className="text-center">
-                            {diferencia === 0 ? (
+                            {diferencias.every((d) => d.diferencia === 0) ? (
                               <Badge bg="success">Exacto</Badge>
-                            ) : diferencia > 0 ? (
-                              <Badge bg="info">+{formatCurrency(Math.abs(diferencia), 'USD')}</Badge>
                             ) : (
-                              <Badge bg="danger">−{formatCurrency(Math.abs(diferencia), 'USD')}</Badge>
+                              diferencias.filter((d) => d.diferencia !== 0).map((d) => (
+                                <div key={d.moneda}>
+                                  <Badge bg={d.diferencia > 0 ? 'info' : 'danger'}>
+                                    {d.diferencia > 0 ? '+' : '−'}{formatCurrency(Math.abs(d.diferencia), d.moneda)} {d.moneda}
+                                  </Badge>
+                                </div>
+                              ))
                             )}
                           </td>
                           <td className="text-center">
@@ -1029,8 +1125,6 @@ const FlujoCajaScreen = () => {
         show={showCerrarModal}
         onHide={() => setShowCerrarModal(false)}
         estadoCaja={estadoCaja}
-        resumenVentas={resumenVentas}
-        ventasDelDia={ventasDelDia}
         onSuccess={() => { loadData(); loadHistorial(mesHistorial); }}
       />
       <TransaccionModal
