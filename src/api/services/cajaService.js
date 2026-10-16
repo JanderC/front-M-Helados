@@ -20,16 +20,19 @@ export const cajaService = {
   },
 
   /**
-   * Cerrar caja — CORREGIDO: envía los tres montos por separado
-   * @param {object} montosFinal - { cop, usd, ves }
+   * Cerrar caja
+   * @param {object} montosFinal - efectivo contado { cop, usd, ves }
    * @param {string} observaciones
+   * @param {object} reportado - pagos electrónicos según banco / punto,
+   *   { "<id_metodo_pago>-<moneda>": monto }
    */
-  cerrar: (montosFinal = {}, observaciones = "") => {
+  cerrar: (montosFinal = {}, observaciones = "", reportado = {}) => {
     const body = {
       monto_final_cop: parseFloat(montosFinal.cop) || 0,
       monto_final_usd: parseFloat(montosFinal.usd) || 0,
       monto_final_ves: parseFloat(montosFinal.ves) || 0,
       notas: observaciones || null,
+      reportado,
     };
     return api.post("/caja/cerrar", body);
   },

@@ -7,6 +7,8 @@ import { toast } from 'react-toastify';
 /* ─── helpers ─────────────────────────────────────── */
 const num = (v) => parseFloat(v) || 0;
 const redondear = (v) => Math.round(v * 100) / 100;
+// Diferencias de menos de un centavo cuentan como exactas
+const esCero = (v) => Math.abs(v) < 0.01;
 
 const MONEDAS_INFO = [
   { cod: 'COP', label: 'Pesos Colombianos', icon: 'bi-cash',            color: '#92400e', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.3)' },
@@ -15,22 +17,20 @@ const MONEDAS_INFO = [
 ];
 
 /**
- * CerrarCajaModal
- * Todo el cuadre sale de GET /api/caja/estado, que solo cuenta las ventas y
- * movimientos registrados en la caja abierta (no las del día calendario).
+ * CerrarCajaModal — cierre en dos pasos:
+ *  1. Contar: el cajero cuenta el efectivo de la gaveta y anota lo que dice
+ *     el banco / cierre del punto para cada pago electrónico, SIN ver lo que
+ *     espera el sistema (así el conteo es real y no se copia el número).
+ *  2. Revisar: el sistema muestra esperado vs. contado y las diferencias.
+ *     Si algo no cuadra se puede volver a contar o explicar en observaciones.
  *
- * Props:
- *  - show: boolean
- *  - onHide: fn
- *  - estadoCaja: objeto retornado por GET /api/caja/estado
- *      estadoCaja.ventas_dia = { total_cop, total_usd_original, total_ves, total_usd, total_ventas }
- *      estadoCaja.efectivo   = { COP|USD|VES: { inicial, ventas, ventas_efectivo, ingresos, egresos, esperado } }
- *      estadoCaja.desglose_metodos_pago = [{ codigo, nombre, icono, codigo_moneda, total, cantidad_ventas }]
- *      estadoCaja.ventas_pendientes = ventas sin completar de esta caja
- *  - onSuccess: fn callback tras cerrar con éxito
+ * Todo el cuadre sale de GET /api/caja/estado (solo ventas de la caja abierta):
+ *   estadoCaja.efectivo     = { COP|USD|VES: { inicial, ventas_efectivo, ingresos, egresos, esperado } }
+ *   estadoCaja.electronicos = [{ clave, nombre, icono, codigo_moneda, sistema, cantidad_ventas }]
  */
 const CerrarCajaModal = ({ show, onHide, estadoCaja, onSuccess }) => {
-  const [cerrando, setCerrando]         = useState(false);
+  const [paso, setPaso]                   = useState('contar');
+  const [cerrando, setCerrando]           = useState(false);
   const [observaciones, setObservaciones] = useState('');
   const [mostrarVentas, setMostrarVentas] = useState(false);
 
@@ -39,19 +39,18 @@ const CerrarCajaModal = ({ show, onHide, estadoCaja, onSuccess }) => {
   const [ventasTurno, setVentasTurno] = useState([]);
   const [cargando, setCargando]       = useState(false);
 
-  // Montos finales reales que ingresa el cajero
-  const [finalCOP, setFinalCOP] = useState('');
-  const [finalUSD, setFinalUSD] = useState('');
-  const [finalVES, setFinalVES] = useState('');
+  // Lo que anota el cajero: efectivo por moneda y reportado por método
+  const [contado, setContado]       = useState({});
+  const [reportado, setReportado]   = useState({});
 
   // Al abrir el modal: limpiar y volver a pedir el estado, para cuadrar
   // contra las ventas de este momento y no contra datos viejos en pantalla
   useEffect(() => {
     if (!show) return;
 
-    setFinalCOP('');
-    setFinalUSD('');
-    setFinalVES('');
+    setPaso('contar');
+    setContado({});
+    setReportado({});
     setObservaciones('');
     setMostrarVentas(false);
     setVentasTurno([]);
@@ -79,60 +78,74 @@ const CerrarCajaModal = ({ show, onHide, estadoCaja, onSuccess }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [show]);
 
-  const ventasDia          = caja?.ventas_dia || {};
-  const totalVentas        = parseInt(ventasDia.total_ventas) || 0;
-  const totalUSDRef        = num(ventasDia.total_usd);
-  const ventasPendientes   = parseInt(caja?.ventas_pendientes) || 0;
-  const desglosePagosData  = caja?.desglose_metodos_pago || [];
+  const ventasDia        = caja?.ventas_dia || {};
+  const totalVentas      = parseInt(ventasDia.total_ventas) || 0;
+  const totalUSDRef      = num(ventasDia.total_usd);
+  const ventasPendientes = parseInt(caja?.ventas_pendientes) || 0;
 
-  const valores = { COP: finalCOP, USD: finalUSD, VES: finalVES };
-  const setters = { COP: setFinalCOP, USD: setFinalUSD, VES: setFinalVES };
-
-  /* ── Cuadre por moneda:
+  /* ── Efectivo por moneda:
         esperado = inicial + ventas en efectivo + ingresos − egresos ── */
   const monedas = MONEDAS_INFO.map((info) => {
     const sufijo   = info.cod.toLowerCase();
-    const efectivo = caja?.efectivo?.[info.cod];
+    const efectivo = caja?.efectivo?.[info.cod] || {};
     const inicial  = num(caja?.[`monto_inicial_${sufijo}`]);
-    const ventas   = efectivo
-      ? num(efectivo.ventas)
-      : num(info.cod === 'USD' ? ventasDia.total_usd_original : ventasDia[`total_${sufijo}`]);
-    const ventasEfectivo = efectivo ? num(efectivo.ventas_efectivo) : ventas;
-    const ingresos = num(efectivo?.ingresos);
-    const egresos  = num(efectivo?.egresos);
-    const esperado = efectivo ? num(efectivo.esperado) : inicial + ventas;
-    const val      = valores[info.cod];
-
+    const ventas   = num(info.cod === 'USD' ? ventasDia.total_usd_original : ventasDia[`total_${sufijo}`]);
+    const esperado = num(efectivo.esperado);
+    const val      = contado[info.cod] ?? '';
     return {
       ...info,
-      inicial, ventas, ventasEfectivo, ingresos, egresos, esperado,
-      otrosMedios: redondear(ventas - ventasEfectivo),
+      inicial,
+      ventas,
+      ventasEfectivo: num(efectivo.ventas_efectivo),
+      ingresos: num(efectivo.ingresos),
+      egresos: num(efectivo.egresos),
+      esperado,
       val,
-      setVal: setters[info.cod],
       dif: val !== '' ? redondear(num(val) - esperado) : null,
     };
   });
 
-  /* ── Monedas activas (tienen inicial, ventas o movimientos) ── */
-  const monedasActivas = monedas.filter(m => m.inicial > 0 || m.ventas > 0 || m.ingresos > 0 || m.egresos > 0);
-  const monedasMostrar = monedasActivas.length > 0 ? monedasActivas : [monedas[0]];
+  // En la gaveta solo se cuentan las monedas con efectivo en el turno
+  const monedasEfectivo = monedas.filter(m => m.inicial > 0 || m.ventasEfectivo > 0 || m.ingresos > 0 || m.egresos > 0);
+  const monedasContar   = monedasEfectivo.length > 0 ? monedasEfectivo : [monedas[0]];
 
-  /* ── Cerrar caja ── */
-  const handleCerrar = async () => {
+  /* ── Pagos electrónicos: sistema vs. lo que reporta el banco / punto ── */
+  const electronicos = (caja?.electronicos || []).map((e) => {
+    const val = reportado[e.clave] ?? '';
+    return { ...e, sistema: num(e.sistema), val, dif: val !== '' ? redondear(num(val) - num(e.sistema)) : null };
+  });
+
+  const faltaAnotar = monedasContar.some(m => m.val === '') || electronicos.some(e => e.val === '');
+  const descuadres  = [
+    ...monedasContar.filter(m => m.dif !== null && !esCero(m.dif)).map(m => ({ nombre: `Efectivo ${m.cod}`, moneda: m.cod, dif: m.dif })),
+    ...electronicos.filter(e => e.dif !== null && !esCero(e.dif)).map(e => ({ nombre: e.nombre, moneda: e.codigo_moneda, dif: e.dif })),
+  ];
+
+  const irARevisar = () => {
     if (ventasPendientes > 0) {
       toast.warning('Completa o cancela las ventas pendientes antes de cerrar');
       return;
     }
-    if (monedasActivas.some(m => m.val === '')) {
-      toast.warning('Ingresa el monto contado para cada moneda con actividad');
+    if (faltaAnotar) {
+      toast.warning('Anota el efectivo contado y lo reportado de cada pago electrónico');
+      return;
+    }
+    setPaso('revisar');
+  };
+
+  /* ── Cerrar caja ── */
+  const handleCerrar = async () => {
+    if (descuadres.length > 0 && !observaciones.trim()) {
+      toast.warning('Explica la diferencia en observaciones antes de cerrar');
       return;
     }
 
     try {
       setCerrando(true);
       const response = await cajaService.cerrar(
-        { cop: finalCOP, usd: finalUSD, ves: finalVES },
-        observaciones.trim()
+        { cop: contado.COP, usd: contado.USD, ves: contado.VES },
+        observaciones.trim(),
+        reportado
       );
 
       if (response.data?.success) {
@@ -150,13 +163,8 @@ const CerrarCajaModal = ({ show, onHide, estadoCaja, onSuccess }) => {
     }
   };
 
-  // FIX: colores de estado de venta reutilizados en el modal
-  const colorEstado = {
-    COMPLETADA: 'success',
-    PENDIENTE:  'warning',
-    EN_PROCESO: 'info',
-    CANCELADA:  'danger',
-  };
+  const textoDif = (dif, moneda) =>
+    esCero(dif) ? 'Exacto' : `${dif > 0 ? 'Sobra +' : 'Falta −'}${formatCurrency(Math.abs(dif), moneda)}`;
 
   return (
     <>
@@ -424,6 +432,34 @@ const CerrarCajaModal = ({ show, onHide, estadoCaja, onSuccess }) => {
         }
         .cm-ventas-table-wrap .table { margin-bottom: 0; font-size: 0.82rem; }
         .cm-ventas-table-wrap .table thead th { background: #f8f7ff; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: #9580b0; }
+        /* ── Pasos ── */
+        .cm-pasos { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+        .cm-paso {
+          display: flex; align-items: center; gap: 8px;
+          font-weight: 700; font-size: 0.85rem; color: #94a3b8;
+        }
+        .cm-paso span {
+          width: 26px; height: 26px; border-radius: 50%;
+          display: flex; align-items: center; justify-content: center;
+          background: #e2e8f0; color: #64748b; font-size: 0.8rem;
+        }
+        .cm-paso.activo { color: #7B2FBE; }
+        .cm-paso.activo span { background: #7B2FBE; color: #fff; }
+        .cm-paso.hecho span { background: #15803d; color: #fff; }
+        .cm-paso-linea { flex: 1; height: 2px; background: #e2e8f0; }
+
+        .cm-electronico { background: rgba(123,47,190,0.04); border-color: rgba(123,47,190,0.2); }
+
+        /* ── Veredicto del cuadre ── */
+        .cm-veredicto {
+          display: flex; gap: 12px; align-items: flex-start;
+          border-radius: 13px; padding: 14px 16px; margin-bottom: 8px;
+        }
+        .cm-veredicto i { font-size: 1.5rem; }
+        .cm-veredicto.ok  { background: rgba(34,197,94,0.1);  color: #15803d; }
+        .cm-veredicto.neg { background: rgba(239,68,68,0.08); color: #b91c1c; }
+        .cm-veredicto-titulo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.05rem; }
+        .cm-veredicto-linea { font-size: 0.85rem; font-weight: 600; }
       `}</style>
 
       <Modal show={show} onHide={onHide} centered className="cerrar-modal" backdrop="static" size="xl">
@@ -435,7 +471,7 @@ const CerrarCajaModal = ({ show, onHide, estadoCaja, onSuccess }) => {
               <div className="cm-header-icon"><i className="bi bi-lock-fill"/></div>
               <div>
                 <p className="cm-header-title">Cerrar Caja</p>
-                <p className="cm-header-sub">Arqueo y cierre del turno</p>
+                <p className="cm-header-sub">Arqueo y cierre del turno · {paso === 'contar' ? 'Paso 1 de 2' : 'Paso 2 de 2'}</p>
               </div>
             </div>
             <button className="cm-close" onClick={onHide}><i className="bi bi-x"/></button>
@@ -443,12 +479,6 @@ const CerrarCajaModal = ({ show, onHide, estadoCaja, onSuccess }) => {
 
           {/* ── Body ── */}
           <div className="cm-body">
-
-            {/* Alerta */}
-            <div className="cm-alert">
-              <i className="bi bi-exclamation-triangle-fill"/>
-              <span>Al cerrar la caja se realizará el arqueo y no podrás realizar más transacciones hasta abrir una nueva caja.</span>
-            </div>
 
             {ventasPendientes > 0 && (
               <div className="cm-alert pendientes">
@@ -460,273 +490,249 @@ const CerrarCajaModal = ({ show, onHide, estadoCaja, onSuccess }) => {
               </div>
             )}
 
-            {/* ── Fila 2 columnas: Info del turno + Resumen por moneda ── */}
-            <div className="cm-two-col">
-
-              {/* Info del turno */}
-              <div className="cm-info-box">
-                <div className="cm-info-box-title">Información del turno</div>
-                <div className="cm-info-row">
-                  <span className="cm-info-row-label">Fecha Apertura</span>
-                  <span className="cm-info-row-val">
-                    {caja?.fecha_apertura ? formatDateTime(caja.fecha_apertura) : '—'}
-                  </span>
-                </div>
-                <div className="cm-info-row">
-                  <span className="cm-info-row-label">Responsable</span>
-                  <span className="cm-info-row-val">{caja?.usuario_apertura || '—'}</span>
-                </div>
-                <div className="cm-info-row">
-                  <span className="cm-info-row-label">Ventas de esta caja</span>
-                  <span className="cm-ventas-chip">
-                    {totalVentas} {totalVentas === 1 ? 'venta' : 'ventas'}
-                  </span>
-                </div>
-                {totalUSDRef > 0 && (
-                  <div className="cm-info-row">
-                    <span className="cm-info-row-label">Equivalente USD</span>
-                    <span className="cm-info-row-val" style={{ color: '#15803d' }}>
-                      {formatCurrency(totalUSDRef, 'USD')}
-                    </span>
-                  </div>
-                )}
-                {/* Montos iniciales */}
-                {monedas.some(m => m.inicial > 0) && (
-                  <>
-                    <div className="cm-info-row" style={{ marginTop: 6, borderTop: '1px solid rgba(123,47,190,0.1)', paddingTop: 10 }}>
-                      <span className="cm-info-row-label" style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Montos iniciales</span>
-                    </div>
-                    {monedas.filter(m => m.inicial > 0).map(m => (
-                      <div key={m.cod} className="cm-info-row">
-                        <span className="cm-info-row-label">{m.cod}</span>
-                        <span className="cm-info-row-val">{formatCurrency(m.inicial, m.cod)}</span>
-                      </div>
-                    ))}
-                  </>
-                )}
+            {/* Pasos */}
+            <div className="cm-pasos">
+              <div className={`cm-paso ${paso === 'contar' ? 'activo' : 'hecho'}`}>
+                <span>1</span> Contar
               </div>
-
-              {/* Resumen por moneda */}
-              <div className="cm-resumen-box">
-                <div className="cm-info-box-title">Resumen por moneda</div>
-                <div className="cm-resumen-monedas">
-                  {monedasMostrar.map(m => (
-                    <div key={m.cod} className="cm-resumen-row">
-                      <div className={`cm-resumen-tag tag-${m.cod}`}>
-                        <i className={`bi ${m.icon}`} style={{ fontSize: '0.85rem' }}/>
-                        {m.label}
-                      </div>
-                      <div className="cm-resumen-cells">
-                        <div className="cm-resumen-cell">
-                          <div className="cm-resumen-cell-label">Monto Inicial</div>
-                          <div className="cm-resumen-cell-val">{formatCurrency(m.inicial, m.cod)}</div>
-                        </div>
-                        <div className="cm-resumen-cell">
-                          <div className="cm-resumen-cell-label">Ventas en efectivo</div>
-                          <div className="cm-resumen-cell-val ventas">
-                            +{formatCurrency(m.ventasEfectivo, m.cod)}
-                          </div>
-                        </div>
-                        {m.ingresos > 0 && (
-                          <div className="cm-resumen-cell">
-                            <div className="cm-resumen-cell-label">Ingresos de caja</div>
-                            <div className="cm-resumen-cell-val ventas">+{formatCurrency(m.ingresos, m.cod)}</div>
-                          </div>
-                        )}
-                        {m.egresos > 0 && (
-                          <div className="cm-resumen-cell">
-                            <div className="cm-resumen-cell-label">Egresos de caja</div>
-                            <div className="cm-resumen-cell-val egresos">−{formatCurrency(m.egresos, m.cod)}</div>
-                          </div>
-                        )}
-                        <div className="cm-resumen-cell">
-                          <div className="cm-resumen-cell-label">Esperado en Caja</div>
-                          <div className="cm-resumen-cell-val esperado">
-                            {formatCurrency(m.esperado, m.cod)}
-                          </div>
-                        </div>
-                        {m.otrosMedios > 0 && (
-                          <div className="cm-resumen-cell">
-                            <div className="cm-resumen-cell-label">Otros medios (no entra a la gaveta)</div>
-                            <div className="cm-resumen-cell-val">{formatCurrency(m.otrosMedios, m.cod)}</div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              <div className="cm-paso-linea"/>
+              <div className={`cm-paso ${paso === 'revisar' ? 'activo' : ''}`}>
+                <span>2</span> Revisar y cerrar
               </div>
             </div>
 
-            {/* ── ✅ NUEVO: Desglose por método de pago (Nequi, Pago Móvil, Bancolombia, etc.) ── */}
-            {desglosePagosData.length > 0 && (
-              <>
-                <div className="cm-section-title">Desglose por método de pago</div>
-                <div className="cm-metodos-grid">
-                  {desglosePagosData.map((d) => (
-                    <div
-                      key={`${d.id_metodo_pago || d.codigo}-${d.codigo_moneda}`}
-                      className="cm-resumen-row"
-                    >
-                      <div className="cm-resumen-tag tag-METODO">
-                        <i className={`bi ${d.icono || 'bi-cash'}`} style={{ fontSize: '0.85rem' }}/>
-                        {d.nombre}
-                      </div>
-                      <div className="cm-resumen-cells">
-                        <div className="cm-resumen-cell">
-                          <div className="cm-resumen-cell-label">Total cobrado</div>
-                          <div className="cm-resumen-cell-val ventas">
-                            {formatCurrency(d.total, d.codigo_moneda)}
-                          </div>
-                        </div>
-                        <div className="cm-resumen-cell">
-                          <div className="cm-resumen-cell-label">Ventas</div>
-                          <div className="cm-resumen-cell-val">{d.cantidad_ventas}</div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
+            {/* Info del turno */}
+            <div className="cm-info-box" style={{ marginBottom: 18 }}>
+              <div className="cm-info-row">
+                <span className="cm-info-row-label">Apertura</span>
+                <span className="cm-info-row-val">
+                  {caja?.fecha_apertura ? formatDateTime(caja.fecha_apertura) : '—'} · {caja?.usuario_apertura || '—'}
+                </span>
+              </div>
+              <div className="cm-info-row">
+                <span className="cm-info-row-label">Ventas de esta caja</span>
+                <span className="cm-ventas-chip">
+                  {totalVentas} {totalVentas === 1 ? 'venta' : 'ventas'}
+                  {totalUSDRef > 0 && ` · ≈ ${formatCurrency(totalUSDRef, 'USD')}`}
+                </span>
+              </div>
+            </div>
 
-            {/* ── FIX: Listado de ventas del turno (colapsable) ── */}
-            {ventasTurno.length > 0 && (
+            {paso === 'contar' && (
               <>
-                <div className="cm-section-title">
-                  Detalle de ventas del turno
-                  <button
-                    className="cm-ventas-toggle"
-                    onClick={() => setMostrarVentas(v => !v)}
-                  >
-                    <i className={`bi ${mostrarVentas ? 'bi-chevron-up' : 'bi-chevron-down'}`}/>
-                    {mostrarVentas ? 'Ocultar' : `Ver ${ventasTurno.length} ventas`}
-                  </button>
+                <div className="cm-alert">
+                  <i className="bi bi-eye-slash-fill"/>
+                  <span>
+                    Cuenta el efectivo de la gaveta y revisa el banco y el cierre del punto <b>antes</b> de ver
+                    lo que espera el sistema. En el siguiente paso verás si cuadra.
+                  </span>
                 </div>
-                {mostrarVentas && (
-                  <div className="cm-ventas-table-wrap">
-                    <Table hover className="table">
-                      <thead>
-                        <tr>
-                          <th>Factura</th>
-                          <th>Hora</th>
-                          <th>Cliente</th>
-                          <th>Moneda</th>
-                          <th className="text-end">Total</th>
-                          <th>Estado</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {ventasTurno.map(venta => (
-                          <tr key={venta.id_venta}>
-                            <td className="fw-bold text-primary">{venta.numero_factura}</td>
-                            <td className="text-muted">{formatDateTime(venta.fecha_venta)}</td>
-                            <td>{venta.nombre_cliente || <span className="text-muted">—</span>}</td>
-                            <td><Badge bg="secondary">{venta.codigo_moneda}</Badge></td>
-                            <td className="text-end fw-bold">{formatCurrency(venta.total, venta.codigo_moneda)}</td>
-                            <td>
-                              <Badge bg={colorEstado[venta.estado_venta] || 'secondary'}>
-                                {venta.estado_venta}
-                              </Badge>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      {/* Subtotales por moneda al pie de la tabla */}
-                      <tfoot className="table-light">
-                        <tr>
-                          <td colSpan="4" className="text-end fw-bold text-muted small">Totales de esta caja:</td>
-                          <td className="text-end" colSpan="2">
-                            {monedasMostrar.map(m => m.ventas > 0 ? (
-                              <div key={m.cod} className="fw-bold text-success small">
-                                +{formatCurrency(m.ventas, m.cod)}{' '}
-                                <Badge bg="secondary" className="small">{m.cod}</Badge>
-                              </div>
-                            ) : null)}
-                          </td>
-                        </tr>
-                      </tfoot>
-                    </Table>
-                  </div>
-                )}
-              </>
-            )}
 
-            {/* ── Conteo físico (grid responsivo) ── */}
-            <div className="cm-section-title">Conteo físico de caja</div>
-            <div className="cm-monto-cards">
-              {monedasMostrar.map(m => (
-                <div
-                  key={m.cod}
-                  className="cm-monto-card"
-                  style={{ background: m.bg, borderColor: m.border }}
-                >
-                  <div className="cm-monto-card-header">
-                    <div className="cm-monto-icon" style={{ background: m.bg, color: m.color }}>
-                      <i className={`bi ${m.icon}`}/>
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <div className="cm-monto-label">{m.label}</div>
-                      <div className="cm-monto-cod">{m.cod} • Efectivo contado en la gaveta</div>
-                    </div>
-                    <div className="cm-monto-esperado">
-                      <div className="cm-monto-esp-label">Esperado</div>
-                      <div className="cm-monto-esp-val">{formatCurrency(m.esperado, m.cod)}</div>
-                    </div>
-                  </div>
-                  <div className="cm-input-row">
-                    <div className="cm-input-wrap">
-                      <span className="cm-input-lbl">Monto real contado ({m.cod}) *</span>
+                {/* ── 1. Efectivo ── */}
+                <div className="cm-section-title">Efectivo en la gaveta (incluye el monto inicial)</div>
+                <div className="cm-monto-cards">
+                  {monedasContar.map(m => (
+                    <div key={m.cod} className="cm-monto-card" style={{ background: m.bg, borderColor: m.border }}>
+                      <div className="cm-monto-card-header">
+                        <div className="cm-monto-icon" style={{ background: m.bg, color: m.color }}>
+                          <i className={`bi ${m.icon}`}/>
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <div className="cm-monto-label">{m.label}</div>
+                          <div className="cm-monto-cod">{m.cod} • billetes y monedas</div>
+                        </div>
+                      </div>
+                      <span className="cm-input-lbl">Total contado ({m.cod}) *</span>
                       <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        className="cm-input"
-                        placeholder="0.00"
+                        type="number" step="0.01" min="0" className="cm-input" placeholder="0"
                         value={m.val}
-                        onChange={e => m.setVal(e.target.value)}
+                        onChange={e => setContado(c => ({ ...c, [m.cod]: e.target.value }))}
                       />
                     </div>
-                  </div>
-                  {/* Diferencia en tiempo real */}
-                  {m.val !== '' && m.dif !== null && (
-                    <div className={`cm-dif ${m.dif >= 0 ? 'ok' : 'neg'}`}>
-                      <span className={`cm-dif-label ${m.dif >= 0 ? 'ok' : 'neg'}`}>
-                        {m.dif === 0
-                          ? <><i className="bi bi-check-circle me-1"/>Cuadra exacto</>
-                          : m.dif > 0
-                            ? <><i className="bi bi-plus-circle me-1"/>Sobrante:</>
-                            : <><i className="bi bi-exclamation-circle me-1"/>Faltante:</>
-                        }
-                      </span>
-                      <span className={`cm-dif-val ${m.dif >= 0 ? 'ok' : 'neg'}`}>
-                        {m.dif > 0 ? '+' : ''}{formatCurrency(m.dif, m.cod)}
-                      </span>
-                    </div>
-                  )}
+                  ))}
                 </div>
-              ))}
-            </div>
 
-            {/* ── Observaciones ── */}
-            <div className="cm-section-title">Observaciones</div>
-            <textarea
-              className="cm-obs-textarea"
-              placeholder="Notas sobre el cierre, discrepancias, incidentes, etc..."
-              value={observaciones}
-              onChange={e => setObservaciones(e.target.value)}
-            />
+                {/* ── 2. Pagos electrónicos ── */}
+                {electronicos.length > 0 && (
+                  <>
+                    <div className="cm-section-title">Pagos electrónicos (según banco / cierre del punto)</div>
+                    <div className="cm-monto-cards">
+                      {electronicos.map(e => (
+                        <div key={e.clave} className="cm-monto-card cm-electronico">
+                          <div className="cm-monto-card-header">
+                            <div className="cm-monto-icon tag-METODO">
+                              <i className={`bi ${e.icono || 'bi-phone'}`}/>
+                            </div>
+                            <div style={{ minWidth: 0 }}>
+                              <div className="cm-monto-label">{e.nombre}</div>
+                              <div className="cm-monto-cod">{e.codigo_moneda} • {e.cantidad_ventas} {e.cantidad_ventas === 1 ? 'venta' : 'ventas'}</div>
+                            </div>
+                          </div>
+                          <span className="cm-input-lbl">Total recibido ({e.codigo_moneda}) *</span>
+                          <input
+                            type="number" step="0.01" min="0" className="cm-input" placeholder="0"
+                            value={e.val}
+                            onChange={ev => setReportado(r => ({ ...r, [e.clave]: ev.target.value }))}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+
+            {paso === 'revisar' && (
+              <>
+                <div className={`cm-veredicto ${descuadres.length === 0 ? 'ok' : 'neg'}`}>
+                  <i className={`bi ${descuadres.length === 0 ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill'}`}/>
+                  <div>
+                    <div className="cm-veredicto-titulo">
+                      {descuadres.length === 0 ? '¡La caja cuadra!' : 'La caja no cuadra'}
+                    </div>
+                    {descuadres.map(d => (
+                      <div key={d.nombre} className="cm-veredicto-linea">{d.nombre}: {textoDif(d.dif, d.moneda)}</div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="cm-section-title">Efectivo en la gaveta</div>
+                <div className="cm-ventas-table-wrap">
+                  <Table className="table mb-0">
+                    <thead>
+                      <tr>
+                        <th>Moneda</th>
+                        <th className="text-end">Inicial</th>
+                        <th className="text-end">+ Ventas efectivo</th>
+                        <th className="text-end">+ Ingresos</th>
+                        <th className="text-end">− Egresos</th>
+                        <th className="text-end">= Esperado</th>
+                        <th className="text-end">Contado</th>
+                        <th className="text-end">Diferencia</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {monedasContar.map(m => (
+                        <tr key={m.cod}>
+                          <td><Badge bg="secondary">{m.cod}</Badge></td>
+                          <td className="text-end">{formatCurrency(m.inicial, m.cod)}</td>
+                          <td className="text-end">{formatCurrency(m.ventasEfectivo, m.cod)}</td>
+                          <td className="text-end">{formatCurrency(m.ingresos, m.cod)}</td>
+                          <td className="text-end">{formatCurrency(m.egresos, m.cod)}</td>
+                          <td className="text-end fw-bold">{formatCurrency(m.esperado, m.cod)}</td>
+                          <td className="text-end fw-bold">{formatCurrency(num(m.val), m.cod)}</td>
+                          <td className={`text-end fw-bold ${esCero(m.dif) ? 'text-success' : 'text-danger'}`}>{textoDif(m.dif, m.cod)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Table>
+                </div>
+
+                {electronicos.length > 0 && (
+                  <>
+                    <div className="cm-section-title">Pagos electrónicos</div>
+                    <div className="cm-ventas-table-wrap">
+                      <Table className="table mb-0">
+                        <thead>
+                          <tr>
+                            <th>Método</th>
+                            <th className="text-end">Ventas</th>
+                            <th className="text-end">Según sistema</th>
+                            <th className="text-end">Según banco / punto</th>
+                            <th className="text-end">Diferencia</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {electronicos.map(e => (
+                            <tr key={e.clave}>
+                              <td>{e.nombre} <Badge bg="secondary">{e.codigo_moneda}</Badge></td>
+                              <td className="text-end">{e.cantidad_ventas}</td>
+                              <td className="text-end fw-bold">{formatCurrency(e.sistema, e.codigo_moneda)}</td>
+                              <td className="text-end fw-bold">{formatCurrency(num(e.val), e.codigo_moneda)}</td>
+                              <td className={`text-end fw-bold ${esCero(e.dif) ? 'text-success' : 'text-danger'}`}>{textoDif(e.dif, e.codigo_moneda)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </Table>
+                    </div>
+                  </>
+                )}
+
+                {/* Ventas del turno (colapsable), para buscar el error si no cuadra */}
+                {ventasTurno.length > 0 && (
+                  <>
+                    <div className="cm-section-title">
+                      Ventas del turno
+                      <button className="cm-ventas-toggle" onClick={() => setMostrarVentas(v => !v)}>
+                        <i className={`bi ${mostrarVentas ? 'bi-chevron-up' : 'bi-chevron-down'}`}/>
+                        {mostrarVentas ? 'Ocultar' : `Ver ${ventasTurno.length} ventas`}
+                      </button>
+                    </div>
+                    {mostrarVentas && (
+                      <div className="cm-ventas-table-wrap" style={{ maxHeight: 300, overflowY: 'auto' }}>
+                        <Table hover className="table">
+                          <thead>
+                            <tr>
+                              <th>Factura</th>
+                              <th>Hora</th>
+                              <th>Moneda</th>
+                              <th className="text-end">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {ventasTurno.map(venta => (
+                              <tr key={venta.id_venta}>
+                                <td className="fw-bold text-primary">{venta.numero_factura}</td>
+                                <td className="text-muted">{formatDateTime(venta.fecha_venta)}</td>
+                                <td><Badge bg="secondary">{venta.codigo_moneda}</Badge></td>
+                                <td className="text-end fw-bold">{formatCurrency(venta.total, venta.codigo_moneda)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </Table>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                <div className="cm-section-title">
+                  Observaciones {descuadres.length > 0 && <span className="text-danger">(obligatorio: explica la diferencia)</span>}
+                </div>
+                <textarea
+                  className="cm-obs-textarea"
+                  placeholder="Ej: faltó registrar una venta, se dio mal un vuelto, pago móvil sin confirmar..."
+                  value={observaciones}
+                  onChange={e => setObservaciones(e.target.value)}
+                />
+              </>
+            )}
           </div>
 
           {/* ── Footer ── */}
           <div className="cm-footer">
-            <button className="cm-btn-cancel" onClick={onHide}>Cancelar</button>
-            <button className="cm-btn-cerrar" onClick={handleCerrar} disabled={cerrando || cargando || ventasPendientes > 0}>
-              {cerrando
-                ? <><Spinner animation="border" size="sm"/>Cerrando...</>
-                : <><i className="bi bi-lock-fill"/>Cerrar Caja</>
-              }
-            </button>
+            {paso === 'contar' ? (
+              <>
+                <button className="cm-btn-cancel" onClick={onHide}>Cancelar</button>
+                <button className="cm-btn-cerrar" onClick={irARevisar} disabled={cargando || ventasPendientes > 0}>
+                  {cargando
+                    ? <><Spinner animation="border" size="sm"/>Cargando...</>
+                    : <><i className="bi bi-calculator"/>Revisar cuadre</>
+                  }
+                </button>
+              </>
+            ) : (
+              <>
+                <button className="cm-btn-cancel" onClick={() => setPaso('contar')} disabled={cerrando}>
+                  <i className="bi bi-arrow-left me-1"/>Volver a contar
+                </button>
+                <button className="cm-btn-cerrar" onClick={handleCerrar} disabled={cerrando}>
+                  {cerrando
+                    ? <><Spinner animation="border" size="sm"/>Cerrando...</>
+                    : <><i className="bi bi-lock-fill"/>Confirmar cierre</>
+                  }
+                </button>
+              </>
+            )}
           </div>
         </div>
       </Modal>

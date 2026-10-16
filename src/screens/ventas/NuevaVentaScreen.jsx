@@ -31,6 +31,22 @@ const pagoVacio = (moneda, monto = "") => ({
   monto,
 });
 
+// ¿Se puede cobrar con este método en esta moneda? (en bolívares solo Pago
+// Móvil o punto de venta). El backend manda la regla en monedas_permitidas.
+const metodoPermitido = (mp, moneda) =>
+  Array.isArray(mp.monedas_permitidas)
+    ? mp.monedas_permitidas.includes(moneda)
+    : !mp.id_moneda || mp.codigo_moneda === moneda;
+
+// Método por defecto de una línea: efectivo si esa moneda lo acepta; si no
+// (bolívares), queda vacío para que el cajero elija Pago Móvil o punto.
+const ajustarMetodo = (pago, metodos) => {
+  const actual = metodos.find((mp) => String(mp.id_metodo_pago) === String(pago.id_metodo_pago));
+  if (actual && metodoPermitido(actual, pago.moneda)) return pago;
+  const efectivo = metodos.find((mp) => mp.codigo === 'EFECTIVO' && metodoPermitido(mp, pago.moneda));
+  return { ...pago, id_metodo_pago: efectivo ? String(efectivo.id_metodo_pago) : "" };
+};
+
 const NuevaVentaScreen = () => {
   const [productos, setProductos] = useState([]);
   const [toppings, setToppings] = useState([]);
@@ -100,14 +116,8 @@ const NuevaVentaScreen = () => {
       if (metodosPagoData.length === 0) {
         console.warn('⚠️ GET /api/metodos-pago no devolvió métodos. Revisa que la migración se haya corrido y que la ruta esté registrada en app.js');
       }
-      // ✅ NUEVO: autoseleccionar EFECTIVO por defecto en la línea única de pago
-      setPagos((prev) => {
-        if (prev.length === 1 && !prev[0].id_metodo_pago) {
-          const efectivo = metodosPagoData.find((mp) => mp.codigo === 'EFECTIVO') || metodosPagoData[0];
-          if (efectivo) return [{ ...prev[0], id_metodo_pago: String(efectivo.id_metodo_pago) }];
-        }
-        return prev;
-      });
+      // Método por defecto según la moneda de cada línea de pago
+      setPagos((prev) => prev.map((p) => ajustarMetodo(p, metodosPagoData)));
       const monedasData = tasR.data?.data || tasR.data;
       let tasasCalc = { USD: 1, VES: 36, COP: 4000 };
       if (Array.isArray(monedasData)) {
@@ -270,7 +280,7 @@ const NuevaVentaScreen = () => {
   // de la venta. Con pago dividido, se recalcula el resto.
   useEffect(() => {
     if (pagos.length === 1) {
-      setPagos([{ ...pagos[0], moneda: monedaSeleccionada, monto: totalMoneda ? totalMoneda.toFixed(2) : "" }]);
+      setPagos([ajustarMetodo({ ...pagos[0], moneda: monedaSeleccionada, monto: totalMoneda ? totalMoneda.toFixed(2) : "" }, metodosPago)]);
     } else {
       setPagos(repartirResto(pagos));
     }
@@ -280,20 +290,24 @@ const NuevaVentaScreen = () => {
   const agregarLineaPago = () => {
     // Al dividir, la primera línea es la que el usuario va a ajustar
     if (pagos.length === 1) ultimaLineaEditada.current = pagos[0].id;
-    setPagos(repartirResto([...pagos, pagoVacio(monedaSeleccionada)]));
+    setPagos(repartirResto([...pagos, ajustarMetodo(pagoVacio(monedaSeleccionada), metodosPago)]));
   };
   const quitarLineaPago = (id) => {
     const restantes = pagos.filter((p) => p.id !== id);
     if (restantes.length === 1) {
       ultimaLineaEditada.current = null;
-      setPagos([{ ...restantes[0], moneda: monedaSeleccionada, monto: totalMoneda ? totalMoneda.toFixed(2) : "" }]);
+      setPagos([ajustarMetodo({ ...restantes[0], moneda: monedaSeleccionada, monto: totalMoneda ? totalMoneda.toFixed(2) : "" }, metodosPago)]);
       return;
     }
     setPagos(repartirResto(restantes));
   };
   const actualizarLineaPago = (id, campo, valor) => {
     if (campo === "monto") ultimaLineaEditada.current = id;
-    const lista = pagos.map((p) => (p.id === id ? { ...p, [campo]: valor } : p));
+    const lista = pagos.map((p) => {
+      if (p.id !== id) return p;
+      const actualizado = { ...p, [campo]: valor };
+      return campo === "moneda" ? ajustarMetodo(actualizado, metodosPago) : actualizado;
+    });
     setPagos(campo === "id_metodo_pago" ? lista : repartirResto(lista));
   };
 
@@ -304,6 +318,7 @@ const NuevaVentaScreen = () => {
 
   const procesarVenta = async () => {
     if (carrito.length === 0) { toast.warning("El carrito está vacío"); return; }
+    if (pagos.some((p) => p.moneda === "VES" && !p.id_metodo_pago)) { toast.warning("En bolívares elige Pago Móvil o Punto de venta"); return; }
     if (!pagosCompletos) { toast.warning("Selecciona el método de pago y el monto de cada línea"); return; }
     if (!pagosCuadran) { toast.warning("La suma de los pagos no coincide con el total de la venta"); return; }
     try {
@@ -334,7 +349,7 @@ const NuevaVentaScreen = () => {
       if (vc?.id_venta) { setVentaSeleccionada(vc.id_venta); setShowDetalleModal(true); }
       setCarrito([]); limpiarCliente(); setMontoRecibido(""); setMostrarVuelto(false); setCarritoAbierto(false); setExtrasModal(null);
       ultimaLineaEditada.current = null;
-      setPagos([pagoVacio(monedaSeleccionada)]); // ✅ NUEVO: reset de pagos
+      setPagos([ajustarMetodo(pagoVacio(monedaSeleccionada), metodosPago)]); // reset de pagos
       loadData();
     } catch (error) {
       toast.error(error.response?.data?.message || "Error al procesar venta");
@@ -1126,6 +1141,7 @@ const NuevaVentaScreen = () => {
         .pago-match-msg.ok { color: #10b981; }
         .pago-match-msg.bad { color: #ef4444; }
         .pago-hint { font-size: 0.72rem; color: #94a3b8; margin-top: 4px; }
+        .pago-select-falta { border-color: #f59e0b !important; box-shadow: 0 0 0 2px rgba(245,158,11,0.25); }
 
         /* FAB móvil */
         .carrito-fab {
@@ -1760,13 +1776,13 @@ const CarritoContent = ({
             {pagos.map((pago) => (
               <div key={pago.id} className="pago-row">
                 <select
-                  className="pago-select"
+                  className={`pago-select${!pago.id_metodo_pago ? " pago-select-falta" : ""}`}
                   value={pago.id_metodo_pago}
                   onChange={(e) => actualizarLineaPago(pago.id, "id_metodo_pago", e.target.value)}
                 >
-                  <option value="">Método...</option>
+                  <option value="">{pago.moneda === "VES" ? "Pago Móvil o Punto..." : "Método..."}</option>
                   {metodosPago
-                    .filter((mp) => !mp.id_moneda || mp.codigo_moneda === pago.moneda)
+                    .filter((mp) => metodoPermitido(mp, pago.moneda))
                     .map((mp) => (
                       <option key={mp.id_metodo_pago} value={mp.id_metodo_pago}>{mp.nombre}</option>
                     ))}

@@ -49,9 +49,17 @@ const ventasDeArqueo = (arqueo) => {
 const diferenciasDeArqueo = (arqueo) => {
   const cierre = arqueo.resumen_cierre?.por_moneda;
   if (cierre) {
-    return MONEDAS
+    const porMoneda = {};
+    MONEDAS
       .filter((moneda) => num(cierre[moneda]?.esperado) !== 0 || num(cierre[moneda]?.contado) !== 0)
-      .map((moneda) => ({ moneda, diferencia: num(cierre[moneda].diferencia) }));
+      .forEach((moneda) => { porMoneda[moneda] = num(cierre[moneda].diferencia); });
+    (arqueo.resumen_cierre.electronicos || []).forEach((e) => {
+      porMoneda[e.codigo_moneda] = (porMoneda[e.codigo_moneda] || 0) + num(e.diferencia);
+    });
+    return Object.entries(porMoneda).map(([moneda, diferencia]) => ({
+      moneda,
+      diferencia: Math.abs(diferencia) < 0.01 ? 0 : Math.round(diferencia * 100) / 100,
+    }));
   }
   // Cierres anteriores: una sola diferencia, en la moneda principal de la caja
   const moneda =
@@ -117,6 +125,7 @@ const DetalleCierreModal = ({ show, onHide, arqueo, onVerVenta }) => {
 
   const colorEstado = { COMPLETADA: 'success', PENDIENTE: 'warning', EN_PROCESO: 'info', CANCELADA: 'danger' };
   const cuadre = arqueo?.resumen_cierre?.por_moneda;
+  const electronicos = arqueo?.resumen_cierre?.electronicos || [];
 
   return (
     <Modal show={show} onHide={onHide} size="xl" centered scrollable>
@@ -212,6 +221,45 @@ const DetalleCierreModal = ({ show, onHide, arqueo, onVerVenta }) => {
                   })}
               </tbody>
             </Table>
+            {electronicos.length > 0 && (
+              <>
+                <div className="small text-muted fw-semibold mt-3 mb-2">
+                  <i className="bi bi-phone me-1"></i>Pagos electrónicos (sistema vs. banco / punto)
+                </div>
+                <Table size="sm" className="mb-0 align-middle" style={{ fontSize: '0.85rem' }}>
+                  <thead className="table-light">
+                    <tr>
+                      <th>Método</th>
+                      <th className="text-end">Ventas</th>
+                      <th className="text-end">Según sistema</th>
+                      <th className="text-end">Según banco / punto</th>
+                      <th className="text-end">Diferencia</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {electronicos.map((e) => {
+                      const dif = num(e.diferencia);
+                      return (
+                        <tr key={e.clave}>
+                          <td>{e.nombre} <Badge bg="secondary">{e.codigo_moneda}</Badge></td>
+                          <td className="text-end">{e.cantidad_ventas}</td>
+                          <td className="text-end">{formatCurrency(e.sistema, e.codigo_moneda)}</td>
+                          <td className="text-end">{e.reportado === null ? '—' : formatCurrency(e.reportado, e.codigo_moneda)}</td>
+                          <td className={`text-end fw-bold ${Math.abs(dif) < 0.01 ? 'text-success' : 'text-danger'}`}>
+                            {e.reportado === null ? '—' : Math.abs(dif) < 0.01 ? 'Exacto' : `${dif > 0 ? '+' : '−'}${formatCurrency(Math.abs(dif), e.codigo_moneda)}`}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </Table>
+              </>
+            )}
+            {arqueo.notas_cierre && (
+              <div className="small mt-3">
+                <span className="text-muted fw-semibold">Observaciones: </span>{arqueo.notas_cierre}
+              </div>
+            )}
           </div>
         )}
 
@@ -590,14 +638,19 @@ const FlujoCajaScreen = () => {
                       )}
                     </Col>
                     <Col md={3}>
-                      {estadoCaja.efectivo && (
+                      {/* El esperado no se muestra aquí: el cierre se cuenta a ciegas */}
+                      {estadoCaja.electronicos?.length > 0 && (
                         <div>
-                          <small className="text-muted d-block">Efectivo esperado en caja</small>
+                          <small className="text-muted d-block">Cobros electrónicos</small>
                           <strong>
-                            {MONEDAS.filter((moneda) => num(estadoCaja.efectivo[moneda]?.esperado) !== 0).map((moneda) => (
-                              <div key={moneda}>{formatCurrency(estadoCaja.efectivo[moneda].esperado, moneda)} <span className="text-muted small fw-normal">{moneda}</span></div>
+                            {estadoCaja.electronicos.map((e) => (
+                              <div key={e.clave} className="small">{e.nombre}: {e.cantidad_ventas} {e.cantidad_ventas === 1 ? 'venta' : 'ventas'}</div>
                             ))}
                           </strong>
+                        </div>
+                      )}
+                      {estadoCaja.efectivo && (
+                        <div>
                           {num(estadoCaja.ventas_pendientes) > 0 && (
                             <div className="small text-warning">
                               <i className="bi bi-hourglass-split me-1"></i>
